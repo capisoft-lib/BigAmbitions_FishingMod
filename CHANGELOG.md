@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0
+
+- Promote the complete fishing loop to its first stable release for Big Ambitions 1.0.
+- Walk automatically to the closest reachable shoreline after a guarded click on outdoor water, then play a long procedural two-handed cast.
+- Give each cast an 80% fish chance, with a 2–20 second bite delay or an automatic empty-line retrieve after 20 seconds.
+- Start the centered circular keyboard QTE at 30% line progress; successful inputs reel in 3.5 m, while mistakes release 1.75 m and reaching 0% lets the fish escape.
+- Add six increasingly rare fish with longer but achievable fights and temporary best-catch happiness bonuses.
+- Refresh a non-stacking +10 fishing happiness modifier for 48 in-game hours, plus the best active caught-fish bonus for 72 hours.
+- Ship dedicated CC0 sound effects for the full cast, bite, reel, QTE, catch and escape sequence, with complete source and licence notices.
+- Add English and French game text, bilingual Steam release copy and a dedicated Workshop preview icon.
+
 ## 0.2.0
 
 - Add eight CC0 fishing effects for casting, reel-out, bobber impact, reel-in, subtle QTE success/failure, landing a fish and a snapped line.

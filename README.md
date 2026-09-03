@@ -45,19 +45,19 @@ All eight audio files shipped with Fishing Mod are distributed under [Creative C
 
 The distributable package also includes [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) so these references remain beside the compiled mod and sounds. Creative Commons notes that CC0 provides no warranty and does not affect third-party trademark, patent, privacy or publicity rights.
 
-## Scope of 0.2.0
+## Scope of 1.0.0
 
 This version implements navigation, casting, six fish, the QTE and saved native happiness modifiers. It does not add fish as inventory items, sale value, fishing skill progression or a catch history yet.
 
 ## Installation
 
 1. Close Big Ambitions.
-2. Download `FishingMod-0.2.0.zip` from the [GitHub release](https://github.com/capisoft-lib/BigAmbitions_FishingMod/releases/tag/v0.2.0).
-3. Extract the archive directly into `%USERPROFILE%\AppData\LocalLow\Hovgaard Games\Big Ambitions\ModsLocal`.
+2. Obtain a ready-to-use Fishing Mod package from Steam Workshop or GitHub Releases. Use only one installation method.
+3. For a manual installation, extract the packaged `FishingMod` folder directly into `%USERPROFILE%\AppData\LocalLow\Hovgaard Games\Big Ambitions\ModsLocal`.
 4. Confirm that the resulting path is `ModsLocal\FishingMod\FishingMod.dll` (not `ModsLocal\FishingMod\FishingMod\FishingMod.dll`).
-5. Start Big Ambitions and enable Fishing Mod in the local mods list if needed.
+5. Start Big Ambitions and enable Fishing Mod in the mods list if needed.
 
-The release archive contains the ready-to-use compiled mod, including its `Sounds` folder. Cloning the source repository into `ModsLocal` is not a substitute for downloading the release archive.
+The release package contains the ready-to-use compiled mod, including its `Sounds` folder. Cloning the source repository into `ModsLocal` is not a substitute for installing a compiled package. A source build writes the equivalent package to `Output/FishingMod`.
 
 ## Build
 

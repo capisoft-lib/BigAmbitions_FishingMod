@@ -15,7 +15,7 @@ MonoBehaviour:
   ModId: FishingMod
   DisplayName: Fishing Mod
   Author: capisoft-lib
-  Version: 0.2.0
+  Version: 1.0.0
   AssetBundleName:
   ModAssembly: {fileID: 5897886265953266890, guid: 2f9c2f0841bd4e68ab6ad2bf548c85ee, type: 3}
   LocalesFolder: {fileID: 102900000, guid: 457ce34430b64e86a6163229a40028cc, type: 3}

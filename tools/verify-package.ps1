@@ -51,11 +51,18 @@ $expectedNames = @(
     'Sounds/qte-success.wav',
     'Sounds/reel-in.wav',
     'Sounds/reel-out.wav',
-    'THIRD_PARTY_NOTICES.md'
+    'THIRD_PARTY_NOTICES.md',
+    'Thumbnail.png'
 )
 $sortedFileNames = @($fileNames | Sort-Object)
 if (($sortedFileNames -join '|') -ne ($expectedNames -join '|')) {
     throw "Unexpected package files: $($sortedFileNames -join ', ')"
+}
+$thumbnail = Join-Path $output 'Thumbnail.png'
+$thumbnailBytes = [IO.File]::ReadAllBytes($thumbnail)
+$hasPngSignature = $thumbnailBytes[0] -eq 0x89 -and $thumbnailBytes[1] -eq 0x50 -and $thumbnailBytes[2] -eq 0x4E -and $thumbnailBytes[3] -eq 0x47
+if ($thumbnailBytes.Length -le 16 -or $thumbnailBytes.Length -ge 1MB -or -not $hasPngSignature) {
+    throw 'Thumbnail.png must be a valid PNG between 16 bytes and 1 MiB.'
 }
 $soundNames = @($expectedNames | Where-Object { $_ -like 'Sounds/*.wav' })
 $soundHashes = @()
