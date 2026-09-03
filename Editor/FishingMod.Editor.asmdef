@@ -1,0 +1,13 @@
+{
+  "name": "FishingMod.Editor",
+  "rootNamespace": "FishingMod.Editor",
+  "references": ["ModBuilder.Editor", "FishingMod"],
+  "includePlatforms": ["Editor"],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": ["BigAmbitions.dll"],
+  "autoReferenced": false,
+  "defineConstraints": ["BA_GAME_DLLS_IMPORTED"],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
