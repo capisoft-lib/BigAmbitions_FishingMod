@@ -2,10 +2,15 @@
 
 ## 0.2.0
 
+- Add eight CC0 fishing effects for casting, reel-out, bobber impact, reel-in, subtle QTE success/failure, landing a fish and a snapped line.
+- Load WAV files directly from the installed mod, use a small overlapping 2D source pool, and route playback through the native effects mixer when available.
+- Keep complete per-file source, license and processing notices in the shipped package.
+- Give each cast an 80% chance of a fish, decide the result up front, wait 2–20 seconds for a bite, and automatically retrieve an empty line after 20 seconds.
+- Start hooked-fish QTEs at 30% progress and let the fish escape if mistakes reduce progress to 0%.
 - Redesign the QTE as a polished circular control wheel centered on screen, with no rectangular panel: four direction arrows, a central Space control and a green outer ring that fills as the line is reeled in.
 - Start the cast within 25 cm of the selected shoreline even if native navigation omits its arrival callback.
 - Add six weighted fish with strictly decreasing odds as quality increases.
-- Add an always-recoverable keyboard QTE: each success reels 3.5 m and each error releases 1.75 m.
+- Add a keyboard QTE where each success reels 3.5 m and each error releases 1.75 m.
 - Increase fight length and mildly shorten response windows with fish rarity while keeping every catch achievable.
 - Refresh one +10 fishing happiness modifier for 48 hours after each completed cast.
 - Keep exactly one 72-hour caught-fish happiness modifier; only the best active catch counts and worse catches cannot refresh it.

@@ -42,6 +42,8 @@ namespace FishingMod
         private float _fightElapsed;
         private float _retrieveProgress;
         private bool _fightActive;
+        private bool _releaseSoundPending;
+        private bool _splashSoundPending;
 
         internal FishingCastVisual(ThirdPersonCharacter character, Vector3 waterPoint)
         {
@@ -137,10 +139,24 @@ namespace FishingMod
             _retrieveProgress = Mathf.Clamp01(retrieveProgress);
         }
 
+        internal void AdvanceWaiting(float deltaTime, float retrieveProgress)
+        {
+            if (!IsAlive) return;
+            _fightActive = false;
+            _fightElapsed += Mathf.Max(0f, deltaTime);
+            _retrieveProgress = Mathf.Clamp01(retrieveProgress);
+        }
+
         internal void Advance(float deltaTime)
         {
             if (!IsAlive) return;
+            float previousElapsed = _elapsed;
             _elapsed = Mathf.Min(FishingMath.SequenceDuration, _elapsed + Mathf.Max(0f, deltaTime));
+            if (previousElapsed < FishingMath.ReleaseTime && _elapsed >= FishingMath.ReleaseTime)
+                _releaseSoundPending = true;
+            float splashTime = FishingMath.ReleaseTime + FishingMath.FlightDuration;
+            if (previousElapsed < splashTime && _elapsed >= splashTime)
+                _splashSoundPending = true;
             _pose = EvaluatePose(_elapsed);
 
             Vector3 up = _character.transform.up;
@@ -161,6 +177,20 @@ namespace FishingMod
             _rightHandTarget.SetPositionAndRotation(rightPosition, sweep * _rightHandStartRotation);
             _leftHandTarget.SetPositionAndRotation(leftPosition, sweep * _leftHandStartRotation);
             _headTarget.position = Vector3.Lerp(_landingPoint, rightPosition + _rodDirection * 2.2f, 0.30f);
+        }
+
+        internal bool ConsumeReleaseSoundEvent()
+        {
+            if (!_releaseSoundPending) return false;
+            _releaseSoundPending = false;
+            return true;
+        }
+
+        internal bool ConsumeSplashSoundEvent()
+        {
+            if (!_splashSoundPending) return false;
+            _splashSoundPending = false;
+            return true;
         }
 
         internal void RenderLate()
@@ -214,7 +244,7 @@ namespace FishingMod
                 Vector3 reeledPoint = _character.transform.position + _waterDirection * (1.10f * _scale);
                 reeledPoint.y = _landingPoint.y;
                 bobberPosition = Vector3.Lerp(_landingPoint, reeledPoint, FishingMath.Smooth01(_retrieveProgress));
-                bobberPosition.y += Mathf.Sin((_fightActive ? _fightElapsed : _elapsed) * 4f) * 0.025f;
+                bobberPosition.y += Mathf.Sin(_fightElapsed * 4f) * 0.025f;
                 bobberPosition.y += Mathf.Sin(_retrieveProgress * Mathf.PI) * (0.18f * _scale);
             }
             _bobber.position = bobberPosition;

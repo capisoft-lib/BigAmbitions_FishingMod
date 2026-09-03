@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using Helpers;
 using UnityEditor.SceneManagement;
@@ -17,6 +18,7 @@ namespace FishingMod.Editor
         {
             _checks = 0;
             CheckRodRenderingConfiguration();
+            CheckAudioAssets();
             CheckGameplayConfiguration();
             CheckHappinessBehavior();
             CheckWaterDetection();
@@ -34,8 +36,29 @@ namespace FishingMod.Editor
             Check(FishingHappinessService.CatchBonusHours == 72,
                 "caught fish happiness lasts 72 hours");
             Check(FishingFishCatalog.All.Count == 6, "six weighted fish available");
+            Check(Math.Abs(FishingBiteRules.FishChance - 0.80d) < 0.0001d,
+                "each cast has an 80 percent fish chance");
+            Check(Mathf.Approximately(FishingBiteRules.BiteDelaySeconds(0d), 2f)
+                && Mathf.Approximately(FishingBiteRules.BiteDelaySeconds(1d), 20f),
+                "hooked fish waits between 2 and 20 seconds");
+            Check(Mathf.Approximately(FishingBiteRules.NoFishWaitSeconds, 20f),
+                "empty cast waits 20 seconds before retrieval");
             Check(Mathf.Approximately(FishingQteSession.FailureMeters, FishingQteSession.SuccessMeters * 0.5f),
                 "QTE mistake loses half a successful pull");
+            FishingQteSession qte = new FishingQteSession(FishingFishCatalog.All[0], new System.Random(12345));
+            Check(Mathf.Approximately(qte.Progress, FishingQteSession.InitialProgress)
+                && Mathf.Approximately(qte.Progress, 0.30f),
+                "QTE starts at 30 percent line progress");
+            FishingQteOutcome escapeOutcome = FishingQteOutcome.None;
+            int escapeSafety = 0;
+            while (!qte.IsEscaped && escapeSafety++ < 20)
+            {
+                FishingQteCommand wrong = (FishingQteCommand)(((int)qte.ExpectedCommand + 1) % 5);
+                escapeOutcome = qte.Submit(wrong);
+            }
+            Check(qte.IsEscaped && escapeOutcome == FishingQteOutcome.Escaped
+                && Mathf.Approximately(qte.Progress, 0f),
+                "fish escapes when QTE progress reaches zero");
             Check(FishingMath.VisibleProgressSegments(0f, 96) == 0,
                 "QTE line ring starts empty");
             Check(FishingMath.VisibleProgressSegments(0.5f, 96) == 48,
@@ -49,6 +72,58 @@ namespace FishingMod.Editor
                 "QTE control wheel stays round and responsively capped");
             Check(Shader.Find("Hidden/Internal-Colored") != null,
                 "QTE control wheel shader available");
+        }
+
+        private static void CheckAudioAssets()
+        {
+            string soundsRoot = Path.Combine(Application.dataPath, "Mods", "FishingMod", "Sounds~");
+            Check(FishingAudio.RequiredSounds.Count == 8, "eight fishing sounds are mapped");
+            HashSet<string> names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < FishingAudio.RequiredSounds.Count; i++)
+            {
+                KeyValuePair<FishingSound, string> spec = FishingAudio.RequiredSounds[i];
+                Check(names.Add(spec.Value), "fishing sound filename is unique: " + spec.Value);
+                string path = Path.Combine(soundsRoot, spec.Value);
+                Check(File.Exists(path), "fishing sound exists: " + spec.Value);
+                FishingWaveData wave = FishingWaveDecoder.Load(path);
+                Check(wave.Channels == 1 && wave.SampleRate == 44100,
+                    "fishing sound is 44.1 kHz mono PCM: " + spec.Value);
+                Check(wave.FrameCount > 0 && wave.DurationSeconds >= MinimumDuration(spec.Key)
+                    && wave.DurationSeconds <= MaximumDuration(spec.Key),
+                    "fishing sound duration is bounded: " + spec.Value);
+
+                float peak = 0f;
+                for (int sample = 0; sample < wave.Samples.Length; sample++)
+                    peak = Mathf.Max(peak, Mathf.Abs(wave.Samples[sample]));
+                Check(peak > 0.01f && peak <= 1f, "fishing sound has valid sample levels: " + spec.Value);
+            }
+        }
+
+        private static float MinimumDuration(FishingSound sound)
+        {
+            switch (sound)
+            {
+                case FishingSound.Cast: return 2f;
+                case FishingSound.ReelOut:
+                case FishingSound.ReelIn: return 0.5f;
+                case FishingSound.FishLanded: return 0.4f;
+                default: return 0.05f;
+            }
+        }
+
+        private static float MaximumDuration(FishingSound sound)
+        {
+            switch (sound)
+            {
+                case FishingSound.Cast: return 3.2f;
+                case FishingSound.ReelOut:
+                case FishingSound.ReelIn:
+                case FishingSound.FishLanded: return 1f;
+                case FishingSound.QteSuccess:
+                case FishingSound.QteFailure:
+                case FishingSound.LineSnap: return 0.25f;
+                default: return 0.5f;
+            }
         }
 
         private static void CheckHappinessBehavior()

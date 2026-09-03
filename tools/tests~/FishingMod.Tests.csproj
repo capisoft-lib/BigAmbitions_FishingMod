@@ -10,5 +10,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="..\..\Scripts\FishingMath.cs" Link="FishingMath.cs" />
     <Compile Include="..\..\Scripts\FishingGameplay.cs" Link="FishingGameplay.cs" />
+    <Compile Include="..\..\Scripts\FishingWaveDecoder.cs" Link="FishingWaveDecoder.cs" />
   </ItemGroup>
 </Project>

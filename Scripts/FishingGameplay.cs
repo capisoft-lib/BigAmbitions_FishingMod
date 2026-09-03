@@ -27,6 +27,7 @@ namespace FishingMod
         None,
         Success,
         Failure,
+        Escaped,
         Completed
     }
 
@@ -127,10 +128,34 @@ namespace FishingMod
         }
     }
 
+    internal static class FishingBiteRules
+    {
+        internal const double FishChance = 0.80d;
+        internal const float MinimumBiteDelaySeconds = 2f;
+        internal const float MaximumBiteDelaySeconds = 20f;
+        internal const float NoFishWaitSeconds = 20f;
+
+        internal static bool HasFish(double roll)
+        {
+            if (double.IsNaN(roll)) throw new ArgumentOutOfRangeException(nameof(roll));
+            return roll < FishChance;
+        }
+
+        internal static float BiteDelaySeconds(double roll)
+        {
+            if (double.IsNaN(roll)) throw new ArgumentOutOfRangeException(nameof(roll));
+            if (roll <= 0d) return MinimumBiteDelaySeconds;
+            if (roll >= 1d) return MaximumBiteDelaySeconds;
+            return MinimumBiteDelaySeconds
+                + (float)roll * (MaximumBiteDelaySeconds - MinimumBiteDelaySeconds);
+        }
+    }
+
     internal sealed class FishingQteSession
     {
         internal const float SuccessMeters = 3.5f;
         internal const float FailureMeters = SuccessMeters * 0.5f;
+        internal const float InitialProgress = 0.30f;
 
         private readonly Random _random;
 
@@ -138,7 +163,7 @@ namespace FishingMod
         {
             Fish = fish ?? throw new ArgumentNullException(nameof(fish));
             _random = random ?? throw new ArgumentNullException(nameof(random));
-            RemainingLineMeters = fish.InitialLineMeters;
+            RemainingLineMeters = fish.InitialLineMeters * (1f - InitialProgress);
             ChooseNextCommand();
         }
 
@@ -149,18 +174,22 @@ namespace FishingMod
         internal int SuccessfulSteps { get; private set; }
         internal int FailedSteps { get; private set; }
         internal bool IsComplete => RemainingLineMeters <= 0.001f;
-        internal float Progress => IsComplete ? 1f : 1f - RemainingLineMeters / Fish.InitialLineMeters;
+        internal bool IsEscaped { get; private set; }
+        internal bool IsFinished => IsComplete || IsEscaped;
+        internal float Progress => IsComplete
+            ? 1f
+            : Math.Max(0f, Math.Min(1f, 1f - RemainingLineMeters / Fish.InitialLineMeters));
 
         internal FishingQteOutcome Advance(float deltaTime)
         {
-            if (IsComplete || deltaTime <= 0f) return FishingQteOutcome.None;
+            if (IsFinished || deltaTime <= 0f) return FishingQteOutcome.None;
             TimeRemaining -= deltaTime;
             return TimeRemaining > 0f ? FishingQteOutcome.None : RegisterFailure();
         }
 
         internal FishingQteOutcome Submit(FishingQteCommand command)
         {
-            if (IsComplete) return FishingQteOutcome.None;
+            if (IsFinished) return FishingQteOutcome.None;
             if (command != ExpectedCommand) return RegisterFailure();
 
             SuccessfulSteps++;
@@ -174,6 +203,12 @@ namespace FishingMod
         {
             FailedSteps++;
             RemainingLineMeters = Math.Min(Fish.InitialLineMeters, RemainingLineMeters + FailureMeters);
+            if (RemainingLineMeters >= Fish.InitialLineMeters - 0.001f)
+            {
+                RemainingLineMeters = Fish.InitialLineMeters;
+                IsEscaped = true;
+                return FishingQteOutcome.Escaped;
+            }
             ChooseNextCommand();
             return FishingQteOutcome.Failure;
         }

@@ -30,8 +30,18 @@ namespace FishingMod.Editor
             try
             {
                 string source = Path.Combine(Application.dataPath, "Mods", "FishingMod");
-                foreach (string name in new[] { "ModManifest.asset", "README.md", "CHANGELOG.md" })
+                foreach (string name in new[] { "ModManifest.asset", "README.md", "CHANGELOG.md", "THIRD_PARTY_NOTICES.md" })
                     File.Copy(Path.Combine(source, name), Path.Combine(job.OutputDirectoryAbsolute, name), true);
+
+                string sourceSounds = Path.Combine(source, "Sounds~");
+                string outputSounds = Path.Combine(job.OutputDirectoryAbsolute, "Sounds");
+                if (Directory.Exists(outputSounds)) Directory.Delete(outputSounds, true);
+                Directory.CreateDirectory(outputSounds);
+                foreach (string sound in Directory.GetFiles(sourceSounds, "*.wav", SearchOption.TopDirectoryOnly))
+                    File.Copy(sound, Path.Combine(outputSounds, Path.GetFileName(sound)), true);
+                if (Directory.GetFiles(outputSounds, "*.wav", SearchOption.TopDirectoryOnly).Length
+                    != FishingAudio.RequiredSounds.Count)
+                    throw new InvalidOperationException("FishingMod must package all required WAV sounds.");
 
                 string dll = Path.Combine(job.OutputDirectoryAbsolute, "FishingMod.dll");
                 if (!File.Exists(dll) || new FileInfo(dll).Length < 8192)

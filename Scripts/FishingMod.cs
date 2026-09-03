@@ -26,7 +26,7 @@ namespace FishingMod
             _host = new GameObject("FishingMod_Runtime");
             try
             {
-                _host.AddComponent<FishingRuntime>().Initialize(message => context.Logger.Info(message));
+                _host.AddComponent<FishingRuntime>().Initialize(context.ModRootPath, message => context.Logger.Info(message));
             }
             catch
             {

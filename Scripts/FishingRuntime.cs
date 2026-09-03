@@ -11,11 +11,15 @@ namespace FishingMod
     [DefaultExecutionOrder(10000)]
     public sealed class FishingRuntime : MonoBehaviour
     {
+        private const float EmptyLineRetrievalSeconds = 1.6f;
+
         private enum SequenceState
         {
             Idle,
             Walking,
             Casting,
+            WaitingForBite,
+            RetrievingEmptyLine,
             Hooked
         }
 
@@ -26,6 +30,7 @@ namespace FishingMod
         private readonly System.Random _random = new System.Random(Guid.NewGuid().GetHashCode());
 
         private Action<string> _log;
+        private FishingAudio _audio;
         private SequenceState _state;
         private PlayerController _player;
         private FishingCastVisual _cast;
@@ -34,15 +39,32 @@ namespace FishingMod
         private bool _ownsNavigationBlocker;
         private bool _disposed;
         private float _walkStartedAt;
+        private FishingFish _pendingFish;
+        private float _biteWaitRemaining;
+        private float _emptyLineRetrieveElapsed;
+        private bool _emptyLineReelRepeatPlayed;
+        private bool _activityBonusApplied;
         private FishingQteSession _qte;
         private FishingQteOutcome _lastQteOutcome;
         private float _qteFeedbackUntil;
         private string _resultMessage;
         private float _resultMessageUntil;
 
-        internal void Initialize(Action<string> log)
+        internal void Initialize(string modRootPath, Action<string> log)
         {
             _log = log ?? (_ => { });
+            try
+            {
+                _audio = new FishingAudio();
+                _audio.Initialize(gameObject, modRootPath, _log);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+                _audio?.Dispose();
+                _audio = null;
+                _log("[FishingMod] Audio initialization failed; fishing remains playable without sound.");
+            }
             _waterDetector.ForceRefresh();
             try
             {
@@ -71,7 +93,23 @@ namespace FishingMod
                 }
 
                 _cast.Advance(Time.deltaTime);
+                if (_cast.ConsumeReleaseSoundEvent())
+                    _audio?.Play(FishingSound.ReelOut, 0.42f, 1.04f);
+                if (_cast.ConsumeSplashSoundEvent())
+                    _audio?.Play(FishingSound.BobberSplash, 0.56f, 1f);
                 if (_cast.IsComplete) FinishCast();
+                return;
+            }
+
+            if (_state == SequenceState.WaitingForBite)
+            {
+                UpdateWaitingForBite();
+                return;
+            }
+
+            if (_state == SequenceState.RetrievingEmptyLine)
+            {
+                UpdateEmptyLineRetrieval();
                 return;
             }
 
@@ -108,7 +146,12 @@ namespace FishingMod
 
         private void LateUpdate()
         {
-            if (!_disposed && (_state == SequenceState.Casting || _state == SequenceState.Hooked) && _cast != null)
+            if (!_disposed
+                && (_state == SequenceState.Casting
+                    || _state == SequenceState.WaitingForBite
+                    || _state == SequenceState.RetrievingEmptyLine
+                    || _state == SequenceState.Hooked)
+                && _cast != null)
                 _cast.RenderLate();
         }
 
@@ -121,6 +164,8 @@ namespace FishingMod
             {
                 if (_state == SequenceState.Hooked && _qte != null && !IsQtePausedByUi())
                     _overlay.DrawQte(_qte, _lastQteOutcome, Time.unscaledTime < _qteFeedbackUntil);
+                else if (_state == SequenceState.WaitingForBite && !IsQtePausedByUi())
+                    _overlay.DrawWaiting();
                 else if (!string.IsNullOrWhiteSpace(_resultMessage) && Time.unscaledTime < _resultMessageUntil)
                     _overlay.DrawToast(_resultMessage);
             }
@@ -224,7 +269,9 @@ namespace FishingMod
                 character.ForceToRotation(Quaternion.LookRotation(facing.normalized, Vector3.up));
                 _player.SetNavigationBlocker(NavigationBlocker.EntertainActivity);
                 _ownsNavigationBlocker = true;
+                PlanBiteAtCastStart();
                 _cast = new FishingCastVisual(character, _waterPoint);
+                _audio?.Play(FishingSound.Cast, 0.48f, 1f);
                 _state = SequenceState.Casting;
                 _log("[FishingMod] Shore reached at " + Format(_shorePoint) + "; long cast started toward " + Format(_waterPoint) + ".");
             }
@@ -237,10 +284,10 @@ namespace FishingMod
 
         private void FinishCast()
         {
-            bool activityBonusApplied = false;
+            _activityBonusApplied = false;
             try
             {
-                activityBonusApplied = _happiness.ApplyFishingActivity();
+                _activityBonusApplied = _happiness.ApplyFishingActivity();
             }
             catch (Exception exception)
             {
@@ -248,16 +295,102 @@ namespace FishingMod
                 _log("[FishingMod] Could not apply the fishing activity happiness modifier.");
             }
 
-            FishingFish fish = FishingFishCatalog.Select(_random.NextDouble());
-            _qte = new FishingQteSession(fish, _random);
+            _emptyLineRetrieveElapsed = 0f;
+            _emptyLineReelRepeatPlayed = false;
             _lastQteOutcome = FishingQteOutcome.None;
             _qteFeedbackUntil = 0f;
-            _cast.AdvanceFight(0f, 0f);
+            _cast.AdvanceWaiting(0f, 0f);
+            _state = SequenceState.WaitingForBite;
+            _log("[FishingMod] Cast completed; "
+                + (_pendingFish != null ? _pendingFish.FallbackName + " will bite" : "no fish selected")
+                + " after " + _biteWaitRemaining.ToString("0.0")
+                + " s. Fishing activity +10/48 h applied=" + _activityBonusApplied + ".");
+        }
+
+        private void PlanBiteAtCastStart()
+        {
+            bool hasFish = FishingBiteRules.HasFish(_random.NextDouble());
+            _pendingFish = hasFish ? FishingFishCatalog.Select(_random.NextDouble()) : null;
+            _biteWaitRemaining = hasFish
+                ? FishingBiteRules.BiteDelaySeconds(_random.NextDouble())
+                : FishingBiteRules.NoFishWaitSeconds;
+        }
+
+        private void UpdateWaitingForBite()
+        {
+            if (_cast == null || !_cast.IsAlive || _player == null || _player.Character == null)
+            {
+                CancelSequence("character or waiting fishing line disappeared");
+                return;
+            }
+
+            if (GameManager.isCitySceneBeingUnloaded || PlayerHelper.playerDead)
+            {
+                CancelSequence("player became unavailable while waiting for a bite");
+                return;
+            }
+
+            if (IsQtePausedByUi()) return;
+
+            float deltaTime = Time.unscaledDeltaTime;
+            _cast.AdvanceWaiting(deltaTime, 0f);
+            _biteWaitRemaining -= deltaTime;
+            if (_biteWaitRemaining > 0f) return;
+
+            if (_pendingFish == null)
+            {
+                _emptyLineRetrieveElapsed = 0f;
+                _emptyLineReelRepeatPlayed = false;
+                _audio?.Play(FishingSound.ReelIn, 0.34f, 0.96f);
+                _state = SequenceState.RetrievingEmptyLine;
+                _log("[FishingMod] No fish bit after 20.0 s; reeling the empty line in.");
+                return;
+            }
+
+            FishingFish fish = _pendingFish;
+            _pendingFish = null;
+            _qte = new FishingQteSession(fish, _random);
+            _cast.AdvanceFight(0f, _qte.Progress);
             _state = SequenceState.Hooked;
-            _log("[FishingMod] Cast completed; " + fish.FallbackName + " hooked (weight "
-                + fish.ChanceWeight + "%, " + fish.RequiredSuccesses + " clean pulls, +"
-                + fish.HappinessBonus + " happiness for 72 h). Fishing activity +10/48 h applied="
-                + activityBonusApplied + ".");
+            _log("[FishingMod] " + fish.FallbackName + " hooked (conditional weight "
+                + fish.ChanceWeight + "%, initial line progress "
+                + (FishingQteSession.InitialProgress * 100f).ToString("0") + "%, "
+                + fish.RequiredSuccesses + " configured pulls, +"
+                + fish.HappinessBonus + " happiness for 72 h).");
+        }
+
+        private void UpdateEmptyLineRetrieval()
+        {
+            if (_cast == null || !_cast.IsAlive || _player == null || _player.Character == null)
+            {
+                CancelSequence("character or empty fishing line disappeared");
+                return;
+            }
+
+            if (GameManager.isCitySceneBeingUnloaded || PlayerHelper.playerDead)
+            {
+                CancelSequence("player became unavailable while reeling the line in");
+                return;
+            }
+
+            if (IsQtePausedByUi()) return;
+
+            float deltaTime = Time.unscaledDeltaTime;
+            _emptyLineRetrieveElapsed += deltaTime;
+            if (!_emptyLineReelRepeatPlayed && _emptyLineRetrieveElapsed >= EmptyLineRetrievalSeconds * 0.5f)
+            {
+                _emptyLineReelRepeatPlayed = true;
+                _audio?.Play(FishingSound.ReelIn, 0.31f, 1.02f);
+            }
+            float progress = Mathf.Clamp01(_emptyLineRetrieveElapsed / EmptyLineRetrievalSeconds);
+            _cast.AdvanceWaiting(deltaTime, progress);
+            if (progress < 1f) return;
+
+            _log("[FishingMod] Empty line retrieved; no fish caught.");
+            ReleaseCastResources();
+            _state = SequenceState.Idle;
+            _player = null;
+            ShowResult(FishingText.NoFish);
         }
 
         private void UpdateQte()
@@ -294,14 +427,30 @@ namespace FishingMod
             _qteFeedbackUntil = Time.unscaledTime + 0.55f;
             if (outcome == FishingQteOutcome.Success)
             {
+                _audio?.Play(FishingSound.ReelIn, 0.30f, 0.96f + (float)_random.NextDouble() * 0.08f);
+                _audio?.Play(FishingSound.QteSuccess, 0.17f, 0.97f + (float)_random.NextDouble() * 0.06f);
                 _log("[FishingMod] QTE success; line remaining " + _qte.RemainingLineMeters.ToString("0.0") + " m.");
                 return;
             }
 
             if (outcome == FishingQteOutcome.Failure)
             {
+                _audio?.Play(FishingSound.QteFailure, 0.16f, 0.97f + (float)_random.NextDouble() * 0.05f);
                 _log("[FishingMod] QTE miss; line released by " + FishingQteSession.FailureMeters.ToString("0.00")
                     + " m, remaining " + _qte.RemainingLineMeters.ToString("0.0") + " m.");
+                return;
+            }
+
+            if (outcome == FishingQteOutcome.Escaped)
+            {
+                FishingFish escapedFish = _qte.Fish;
+                _audio?.Play(FishingSound.LineSnap, 0.58f, 0.94f);
+                _log("[FishingMod] " + escapedFish.FallbackName + " escaped after line progress reached 0%.");
+                string escaped = FishingText.Escaped(escapedFish);
+                ReleaseCastResources();
+                _state = SequenceState.Idle;
+                _player = null;
+                ShowResult(escaped);
                 return;
             }
 
@@ -324,6 +473,7 @@ namespace FishingMod
             }
 
             string result = FishingText.Caught(bonus);
+            _audio?.Play(FishingSound.FishLanded, 0.64f, 0.98f + (float)_random.NextDouble() * 0.04f);
             _log("[FishingMod] Caught " + caughtFish.FallbackName + "; active catch bonus "
                 + bonus.CountedFish.FallbackName + " +" + bonus.CountedFish.HappinessBonus + "/72 h.");
             ReleaseCastResources();
@@ -394,6 +544,11 @@ namespace FishingMod
             }
 
             _qte = null;
+            _pendingFish = null;
+            _biteWaitRemaining = 0f;
+            _emptyLineRetrieveElapsed = 0f;
+            _emptyLineReelRepeatPlayed = false;
+            _activityBonusApplied = false;
 
             if (_ownsNavigationBlocker && _player != null)
             {
@@ -409,6 +564,8 @@ namespace FishingMod
             if (_disposed) return;
             CancelSequence("mod unloaded");
             _overlay.Dispose();
+            _audio?.Dispose();
+            _audio = null;
             _disposed = true;
             _log = null;
         }

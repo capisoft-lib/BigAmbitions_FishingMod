@@ -56,7 +56,7 @@ if (!(Select-String -LiteralPath $log -SimpleMatch '[FishingMod.Build] Official 
 }
 $officialFiles = @(Get-ChildItem -LiteralPath $isolatedOutput -File | Sort-Object Name)
 $officialNames = @($officialFiles.Name)
-$expectedNames = @('CHANGELOG.md', 'FishingMod.dll', 'ModManifest.asset', 'README.md')
+$expectedNames = @('CHANGELOG.md', 'FishingMod.dll', 'ModManifest.asset', 'README.md', 'THIRD_PARTY_NOTICES.md')
 if (($officialNames -join '|') -ne ($expectedNames -join '|')) {
     throw "Unexpected official package contents: $($officialNames -join ', ')"
 }
@@ -70,7 +70,16 @@ $expectedRelativeNames = @(
     'Locales/en.json',
     'Locales/fr.json',
     'ModManifest.asset',
-    'README.md'
+    'README.md',
+    'Sounds/bobber-splash.wav',
+    'Sounds/cast-whoosh.wav',
+    'Sounds/fish-landed.wav',
+    'Sounds/line-snap.wav',
+    'Sounds/qte-failure.wav',
+    'Sounds/qte-success.wav',
+    'Sounds/reel-in.wav',
+    'Sounds/reel-out.wav',
+    'THIRD_PARTY_NOTICES.md'
 )
 if (($officialRelativeNames -join '|') -ne ($expectedRelativeNames -join '|')) {
     throw "Unexpected recursive official package contents: $($officialRelativeNames -join ', ')"

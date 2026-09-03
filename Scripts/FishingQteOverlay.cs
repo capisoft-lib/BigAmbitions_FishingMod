@@ -67,6 +67,16 @@ namespace FishingMod
         internal static string CancelHint => Loc("fishingmod_qte_cancel", "Escape: abandon the fish");
         internal static string Success => Loc("fishingmod_qte_success", "Good! 3.5 m reeled in");
         internal static string Failure => Loc("fishingmod_qte_failure", "Missed: 1.75 m released");
+        internal static string Waiting => Loc("fishingmod_waiting", "Waiting for a bite...");
+        internal static string NoFish => Loc("fishingmod_result_no_fish", "Nothing bit. The line was reeled in.");
+
+        internal static string Escaped(FishingFish fish)
+        {
+            return Format(
+                Loc("fishingmod_result_escaped", "{fish} escaped!"),
+                "fish",
+                FishName(fish));
+        }
 
         internal static string Caught(FishingCatchBonusResult result)
         {
@@ -146,8 +156,8 @@ namespace FishingMod
             DrawShadowedLabel(new Rect(labelX, wheel.y - 39f, labelWidth, 25f), FishingText.RarityAndBonus(session.Fish), _detailStyle);
 
             GUI.Label(
-                new Rect(wheel.center.x - 44f, wheel.center.y + wheel.height * 0.115f, 88f, 18f),
-                FishingText.Command(FishingQteCommand.Reel),
+                new Rect(wheel.center.x - 44f, wheel.center.y - 9f, 88f, 18f),
+                "Space",
                 _microStyle);
 
             DrawShadowedLabel(
@@ -160,6 +170,16 @@ namespace FishingMod
             else if (showFeedback && feedback == FishingQteOutcome.Failure) footer = FishingText.Failure;
             DrawShadowedLabel(new Rect(labelX, wheel.yMax + 38f, labelWidth, 24f), footer, _smallStyle);
             DrawShadowedLabel(new Rect(labelX, wheel.yMax + 62f, labelWidth, 24f), FishingText.Instruction, _smallStyle);
+        }
+
+        internal void DrawWaiting()
+        {
+            EnsureStyles();
+            float width = Mathf.Min(520f, Screen.width - 24f);
+            DrawShadowedLabel(
+                new Rect((Screen.width - width) * 0.5f, Screen.height * 0.22f, width, 36f),
+                FishingText.Waiting,
+                _titleStyle);
         }
 
         internal static Rect CenteredWheelRect(float screenWidth, float screenHeight)

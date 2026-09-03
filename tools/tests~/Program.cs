@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text;
 
 namespace FishingMod
 {
@@ -39,7 +41,9 @@ namespace FishingMod
                 Check(FishingMath.ReleaseTime > 0.5f && FishingMath.ReleaseTime < FishingMath.FlightDuration + 0.5f, "release timing range");
                 Check(FishingMath.SequenceDuration > FishingMath.ReleaseTime + FishingMath.FlightDuration, "settled phase follows flight");
                 CheckFishCatalog();
-                CheckQteRecovery();
+                CheckBiteRules();
+                CheckQteProgress();
+                CheckWaveDecoder();
                 Console.WriteLine("PASS " + _passed + "/" + _passed);
                 return 0;
             }
@@ -82,16 +86,31 @@ namespace FishingMod
             Check(FishingFishCatalog.BetterOf(fish[1], fish[4]) == fish[4], "best fish wins comparison");
         }
 
-        private static void CheckQteRecovery()
+        private static void CheckBiteRules()
+        {
+            Check(Approximately((float)FishingBiteRules.FishChance, 0.80f), "cast fish chance is 80 percent");
+            Check(FishingBiteRules.HasFish(0d), "zero bite roll has a fish");
+            Check(FishingBiteRules.HasFish(0.799999d), "bite roll below 80 percent has a fish");
+            Check(!FishingBiteRules.HasFish(0.80d), "bite roll at 80 percent has no fish");
+            Check(!FishingBiteRules.HasFish(1d), "maximum bite roll has no fish");
+            Check(Approximately(FishingBiteRules.BiteDelaySeconds(0d), 2f), "bite delay starts at 2 seconds");
+            Check(Approximately(FishingBiteRules.BiteDelaySeconds(0.5d), 11f), "bite delay midpoint is 11 seconds");
+            Check(Approximately(FishingBiteRules.BiteDelaySeconds(1d), 20f), "bite delay ends at 20 seconds");
+            Check(Approximately(FishingBiteRules.NoFishWaitSeconds, 20f), "empty cast waits exactly 20 seconds");
+        }
+
+        private static void CheckQteProgress()
         {
             FishingFish fish = FishingFishCatalog.All[0];
             FishingQteSession qte = new FishingQteSession(fish, new Random(12345));
-            Check(Approximately(qte.RemainingLineMeters, fish.RequiredSuccesses * FishingQteSession.SuccessMeters),
-                "QTE starts at configured line length");
+            float initialRemaining = fish.InitialLineMeters * (1f - FishingQteSession.InitialProgress);
+            Check(Approximately(qte.Progress, 0.30f), "QTE starts at 30 percent progress");
+            Check(Approximately(qte.RemainingLineMeters, initialRemaining),
+                "QTE starts with 70 percent of the line remaining");
 
             FishingQteCommand expected = qte.ExpectedCommand;
             Check(qte.Submit(expected) == FishingQteOutcome.Success, "correct QTE reels line");
-            float afterSuccess = fish.InitialLineMeters - FishingQteSession.SuccessMeters;
+            float afterSuccess = initialRemaining - FishingQteSession.SuccessMeters;
             Check(Approximately(qte.RemainingLineMeters, afterSuccess), "success reels 3.5 metres");
 
             FishingQteCommand wrong = (FishingQteCommand)(((int)qte.ExpectedCommand + 1) % 5);
@@ -99,21 +118,74 @@ namespace FishingMod
             Check(Approximately(qte.RemainingLineMeters, afterSuccess + FishingQteSession.FailureMeters),
                 "failure costs half a success");
 
-            for (int i = 0; i < 20; i++)
+            Check(qte.Advance(fish.ResponseWindowSeconds + 0.01f) == FishingQteOutcome.Failure,
+                "QTE timeout counts as one failure before zero progress");
+
+            FishingQteOutcome escapeOutcome = FishingQteOutcome.None;
+            int escapeSafety = 0;
+            while (!qte.IsEscaped && escapeSafety++ < 20)
             {
                 wrong = (FishingQteCommand)(((int)qte.ExpectedCommand + 1) % 5);
-                qte.Submit(wrong);
+                escapeOutcome = qte.Submit(wrong);
             }
-            Check(Approximately(qte.RemainingLineMeters, fish.InitialLineMeters), "failures cap at initial line length");
-            Check(qte.Advance(fish.ResponseWindowSeconds + 0.01f) == FishingQteOutcome.Failure,
-                "QTE timeout counts as one failure");
+            Check(qte.IsEscaped && escapeOutcome == FishingQteOutcome.Escaped,
+                "fish escapes when progress falls to zero");
+            Check(Approximately(qte.Progress, 0f), "escaped QTE reports zero progress");
+            Check(qte.Submit(qte.ExpectedCommand) == FishingQteOutcome.None,
+                "escaped QTE ignores further input");
 
+            FishingQteSession catchable = new FishingQteSession(fish, new Random(54321));
             int safety = 0;
             FishingQteOutcome outcome = FishingQteOutcome.None;
-            while (!qte.IsComplete && safety++ < 100)
-                outcome = qte.Submit(qte.ExpectedCommand);
-            Check(qte.IsComplete && outcome == FishingQteOutcome.Completed, "QTE remains completable after mistakes");
-            Check(Approximately(qte.Progress, 1f), "completed QTE reports full progress");
+            while (!catchable.IsComplete && safety++ < 100)
+                outcome = catchable.Submit(catchable.ExpectedCommand);
+            Check(catchable.IsComplete && outcome == FishingQteOutcome.Completed,
+                "QTE remains completable from 30 percent");
+            Check(Approximately(catchable.Progress, 1f), "completed QTE reports full progress");
+        }
+
+        private static void CheckWaveDecoder()
+        {
+            FishingWaveData wave = FishingWaveDecoder.Decode(CreateTestWave());
+            Check(wave.Channels == 1, "WAV decoder retains channel count");
+            Check(wave.SampleRate == 44100, "WAV decoder retains sample rate");
+            Check(wave.FrameCount == 3, "WAV decoder retains frame count");
+            Check(Approximately(wave.Samples[0], -1f)
+                && Approximately(wave.Samples[1], 0f)
+                && Approximately(wave.Samples[2], 0.5f),
+                "WAV decoder converts signed PCM samples");
+
+            byte[] invalid = CreateTestWave();
+            invalid[0] = (byte)'X';
+            bool rejected = false;
+            try { FishingWaveDecoder.Decode(invalid); }
+            catch (InvalidDataException) { rejected = true; }
+            Check(rejected, "WAV decoder rejects an invalid RIFF header");
+        }
+
+        private static byte[] CreateTestWave()
+        {
+            short[] samples = { short.MinValue, 0, 16384 };
+            using (MemoryStream stream = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true))
+            {
+                writer.Write(Encoding.ASCII.GetBytes("RIFF"));
+                writer.Write(36 + samples.Length * 2);
+                writer.Write(Encoding.ASCII.GetBytes("WAVE"));
+                writer.Write(Encoding.ASCII.GetBytes("fmt "));
+                writer.Write(16);
+                writer.Write((ushort)1);
+                writer.Write((ushort)1);
+                writer.Write(44100);
+                writer.Write(44100 * 2);
+                writer.Write((ushort)2);
+                writer.Write((ushort)16);
+                writer.Write(Encoding.ASCII.GetBytes("data"));
+                writer.Write(samples.Length * 2);
+                for (int i = 0; i < samples.Length; i++) writer.Write(samples[i]);
+                writer.Flush();
+                return stream.ToArray();
+            }
         }
 
         private static bool Approximately(float left, float right)
