@@ -32,6 +32,13 @@ namespace FishingMod
             return 4f * apexHeight * progress * (1f - progress);
         }
 
+        internal static int VisibleProgressSegments(float progress, int totalSegments)
+        {
+            if (totalSegments <= 0) return 0;
+            float clamped = Clamp01(progress);
+            return clamped <= 0f ? 0 : (int)Math.Ceiling(clamped * totalSegments);
+        }
+
         internal static float ShoreScore(float horizontalWaterDistance, float pathLength, float verticalDifference)
         {
             return Math.Max(0f, horizontalWaterDistance) * 1000f

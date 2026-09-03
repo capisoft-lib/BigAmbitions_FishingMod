@@ -83,6 +83,13 @@ namespace FishingMod
 
             if (_state == SequenceState.Walking)
             {
+                if (_player != null && _player.Character != null &&
+                    (_player.transform.position - _shorePoint).sqrMagnitude <= 0.0625f)
+                {
+                    OnShoreReached();
+                    return;
+                }
+
                 if (_player == null || !_player.hasOnGoalReachedAction)
                 {
                     CancelSequence("shore movement was cancelled");
@@ -401,6 +408,7 @@ namespace FishingMod
         {
             if (_disposed) return;
             CancelSequence("mod unloaded");
+            _overlay.Dispose();
             _disposed = true;
             _log = null;
         }

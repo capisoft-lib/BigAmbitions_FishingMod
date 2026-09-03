@@ -20,6 +20,7 @@ foreach ($marker in @(
     'ApplyFishingActivity',
     'ApplyCatch',
     'AdvanceFight',
+    'DrawControlWheel',
     'SetHandIKTargets',
     'SetGoal',
     'RaycastNonAlloc',

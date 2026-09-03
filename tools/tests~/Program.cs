@@ -22,6 +22,11 @@ namespace FishingMod
                 Check(FishingMath.BallisticHeight(0f, 5f) == 0f, "arc starts on endpoint");
                 Check(FishingMath.BallisticHeight(1f, 5f) == 0f, "arc ends on endpoint");
                 Check(Approximately(FishingMath.BallisticHeight(0.5f, 5f), 5f), "arc reaches apex");
+                Check(FishingMath.VisibleProgressSegments(0f, 96) == 0, "line progress ring starts empty");
+                Check(FishingMath.VisibleProgressSegments(0.5f, 96) == 48, "line progress ring reaches half a circle");
+                Check(FishingMath.VisibleProgressSegments(0.001f, 96) == 1, "line progress ring shows its first segment");
+                Check(FishingMath.VisibleProgressSegments(1f, 96) == 96, "line progress ring completes the circle");
+                Check(FishingMath.VisibleProgressSegments(1f, 0) == 0, "line progress ring rejects an empty segment count");
                 Check(FishingMath.ShoreScore(1f, 900f, 0f) < FishingMath.ShoreScore(2f, 0f, 0f), "shore proximity outranks path length");
                 Check(FishingMath.ShoreScore(2f, 10f, 0f) < FishingMath.ShoreScore(2f, 20f, 0f), "shorter equal-distance route wins");
                 Check(FishingMath.LooksLikeWater("HDRP Water Surface"), "water surface token");

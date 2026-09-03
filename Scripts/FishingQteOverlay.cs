@@ -1,5 +1,6 @@
 using Localizor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace FishingMod
 {
@@ -121,40 +122,50 @@ namespace FishingMod
 
     internal sealed class FishingQteOverlay
     {
+        private const int ProgressSegments = 96;
+        private const int CircleSegments = 48;
+
         private GUIStyle _titleStyle;
         private GUIStyle _detailStyle;
-        private GUIStyle _commandStyle;
         private GUIStyle _smallStyle;
+        private GUIStyle _microStyle;
         private GUIStyle _toastStyle;
+        private Material _wheelMaterial;
 
         internal void DrawQte(FishingQteSession session, FishingQteOutcome feedback, bool showFeedback)
         {
             if (session == null) return;
             EnsureStyles();
 
-            float width = Mathf.Min(620f, Screen.width - 32f);
-            float height = 286f;
-            Rect panel = new Rect((Screen.width - width) * 0.5f, Mathf.Max(24f, Screen.height * 0.07f), width, height);
-            DrawSolid(panel, new Color(0.025f, 0.055f, 0.075f, 0.94f));
-            DrawSolid(new Rect(panel.x, panel.y, panel.width, 5f), RarityColor(session.Fish.Rarity));
+            Rect wheel = CenteredWheelRect(Screen.width, Screen.height);
+            DrawControlWheel(wheel, session.ExpectedCommand, session.Progress);
 
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 14f, panel.width - 40f, 36f), FishingText.Hooked(session.Fish), _titleStyle);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 49f, panel.width - 40f, 25f), FishingText.RarityAndBonus(session.Fish), _detailStyle);
+            float labelWidth = Mathf.Min(620f, Screen.width - 24f);
+            float labelX = (Screen.width - labelWidth) * 0.5f;
+            DrawShadowedLabel(new Rect(labelX, wheel.y - 72f, labelWidth, 36f), FishingText.Hooked(session.Fish), _titleStyle);
+            DrawShadowedLabel(new Rect(labelX, wheel.y - 39f, labelWidth, 25f), FishingText.RarityAndBonus(session.Fish), _detailStyle);
 
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 79f, panel.width - 40f, 24f), FishingText.Instruction, _smallStyle);
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 102f, panel.width - 40f, 66f), FishingText.Command(session.ExpectedCommand), _commandStyle);
+            GUI.Label(
+                new Rect(wheel.center.x - 44f, wheel.center.y + wheel.height * 0.115f, 88f, 18f),
+                FishingText.Command(FishingQteCommand.Reel),
+                _microStyle);
 
-            Rect timeBar = new Rect(panel.x + 32f, panel.y + 169f, panel.width - 64f, 11f);
-            DrawProgress(timeBar, session.TimeRemaining / session.Fish.ResponseWindowSeconds, new Color(1f, 0.72f, 0.18f, 1f));
-
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 187f, panel.width - 40f, 23f), FishingText.LineRemaining(session.RemainingLineMeters), _detailStyle);
-            Rect lineBar = new Rect(panel.x + 32f, panel.y + 215f, panel.width - 64f, 16f);
-            DrawProgress(lineBar, session.Progress, new Color(0.18f, 0.75f, 0.95f, 1f));
+            DrawShadowedLabel(
+                new Rect(labelX, wheel.yMax + 10f, labelWidth, 25f),
+                FishingText.LineRemaining(session.RemainingLineMeters),
+                _detailStyle);
 
             string footer = FishingText.CancelHint;
             if (showFeedback && feedback == FishingQteOutcome.Success) footer = FishingText.Success;
             else if (showFeedback && feedback == FishingQteOutcome.Failure) footer = FishingText.Failure;
-            GUI.Label(new Rect(panel.x + 20f, panel.y + 242f, panel.width - 40f, 28f), footer, _smallStyle);
+            DrawShadowedLabel(new Rect(labelX, wheel.yMax + 38f, labelWidth, 24f), footer, _smallStyle);
+            DrawShadowedLabel(new Rect(labelX, wheel.yMax + 62f, labelWidth, 24f), FishingText.Instruction, _smallStyle);
+        }
+
+        internal static Rect CenteredWheelRect(float screenWidth, float screenHeight)
+        {
+            float diameter = Mathf.Clamp(Mathf.Min(screenWidth, screenHeight) * 0.34f, 250f, 340f);
+            return new Rect((screenWidth - diameter) * 0.5f, (screenHeight - diameter) * 0.5f, diameter, diameter);
         }
 
         internal void DrawToast(string text)
@@ -173,8 +184,8 @@ namespace FishingMod
             if (_titleStyle != null) return;
             _titleStyle = NewStyle(25, FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
             _detailStyle = NewStyle(16, FontStyle.Bold, TextAnchor.MiddleCenter, new Color(0.72f, 0.91f, 1f));
-            _commandStyle = NewStyle(38, FontStyle.Bold, TextAnchor.MiddleCenter, new Color(1f, 0.83f, 0.25f));
             _smallStyle = NewStyle(14, FontStyle.Normal, TextAnchor.MiddleCenter, new Color(0.88f, 0.92f, 0.94f));
+            _microStyle = NewStyle(11, FontStyle.Bold, TextAnchor.MiddleCenter, new Color(0.22f, 0.24f, 0.25f));
             _toastStyle = NewStyle(19, FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
             _toastStyle.wordWrap = true;
         }
@@ -190,12 +201,140 @@ namespace FishingMod
             };
         }
 
-        private static void DrawProgress(Rect rect, float progress, Color fill)
+        private void DrawControlWheel(Rect rect, FishingQteCommand command, float progress)
         {
-            progress = Mathf.Clamp01(progress);
-            DrawSolid(rect, new Color(0f, 0f, 0f, 0.62f));
-            Rect inner = new Rect(rect.x + 2f, rect.y + 2f, Mathf.Max(0f, (rect.width - 4f) * progress), rect.height - 4f);
-            DrawSolid(inner, fill);
+            if (Event.current.type != EventType.Repaint || !EnsureWheelMaterial()) return;
+
+            Vector2 center = rect.center;
+            float radius = Mathf.Min(rect.width, rect.height) * 0.5f;
+            Color pad = new Color(0.92f, 0.93f, 0.92f, 0.98f);
+            Color inactive = new Color(0.55f, 0.57f, 0.58f, 1f);
+            Color active = new Color(0.025f, 0.035f, 0.04f, 1f);
+            Color progressTrack = new Color(0.31f, 0.35f, 0.36f, 1f);
+            Color progressFill = new Color(0.05f, 0.78f, 0.34f, 1f);
+            float scale = rect.width / 200f;
+
+            GL.PushMatrix();
+            try
+            {
+                _wheelMaterial.SetPass(0);
+                GL.LoadPixelMatrix(0f, Screen.width, Screen.height, 0f);
+                GL.Begin(GL.TRIANGLES);
+                AddFilledCircle(center + Vector2.up * 5f * scale, radius - 7f * scale, new Color(0f, 0f, 0f, 0.34f), CircleSegments);
+                AddFilledCircle(center, radius - 13f * scale, pad, CircleSegments);
+                AddRing(center, radius - 13f * scale, 2f * scale, CircleSegments, CircleSegments, new Color(1f, 1f, 1f, 0.72f));
+                AddRing(center, radius - 2f * scale, 7f * scale, ProgressSegments, ProgressSegments, progressTrack);
+                AddRing(center, radius - 2f * scale, 7f * scale, FishingMath.VisibleProgressSegments(progress, ProgressSegments), ProgressSegments, progressFill);
+
+                float arrowOffset = 48f * scale;
+                AddArrow(center + Vector2.up * -arrowOffset, Vector2.up * -1f, command == FishingQteCommand.Up ? active : inactive, scale);
+                AddArrow(center + Vector2.left * arrowOffset, Vector2.left, command == FishingQteCommand.Left ? active : inactive, scale);
+                AddArrow(center + Vector2.up * arrowOffset, Vector2.up, command == FishingQteCommand.Down ? active : inactive, scale);
+                AddArrow(center + Vector2.right * arrowOffset, Vector2.right, command == FishingQteCommand.Right ? active : inactive, scale);
+                float spaceScale = command == FishingQteCommand.Reel ? scale * 1.08f : scale;
+                AddRing(center, 21f * spaceScale, 8f * spaceScale, CircleSegments, CircleSegments, command == FishingQteCommand.Reel ? active : inactive);
+                GL.End();
+            }
+            finally
+            {
+                GL.PopMatrix();
+            }
+        }
+
+        private static void AddFilledCircle(Vector2 center, float radius, Color color, int segments)
+        {
+            GL.Color(color);
+            float step = Mathf.PI * 2f / segments;
+            for (int i = 0; i < segments; i++)
+            {
+                float angle0 = i * step;
+                float angle1 = angle0 + step;
+                AddTriangle(
+                    center,
+                    center + new Vector2(Mathf.Cos(angle0), Mathf.Sin(angle0)) * radius,
+                    center + new Vector2(Mathf.Cos(angle1), Mathf.Sin(angle1)) * radius);
+            }
+        }
+
+        private static void AddRing(Vector2 center, float outerRadius, float thickness, int visibleSegments, int totalSegments, Color color)
+        {
+            if (visibleSegments <= 0 || totalSegments <= 0) return;
+            visibleSegments = Mathf.Min(visibleSegments, totalSegments);
+            float innerRadius = Mathf.Max(0f, outerRadius - thickness);
+            float angleStep = Mathf.PI * 2f / totalSegments;
+            float startAngle = -Mathf.PI * 0.5f;
+            GL.Color(color);
+            for (int i = 0; i < visibleSegments; i++)
+            {
+                float angle0 = startAngle + i * angleStep;
+                float angle1 = angle0 + angleStep;
+                Vector2 outer0 = center + new Vector2(Mathf.Cos(angle0), Mathf.Sin(angle0)) * outerRadius;
+                Vector2 outer1 = center + new Vector2(Mathf.Cos(angle1), Mathf.Sin(angle1)) * outerRadius;
+                Vector2 inner0 = center + new Vector2(Mathf.Cos(angle0), Mathf.Sin(angle0)) * innerRadius;
+                Vector2 inner1 = center + new Vector2(Mathf.Cos(angle1), Mathf.Sin(angle1)) * innerRadius;
+                AddQuad(outer0, outer1, inner1, inner0);
+            }
+        }
+
+        private static void AddArrow(Vector2 center, Vector2 direction, Color color, float scale)
+        {
+            direction.Normalize();
+            Vector2 perpendicular = new Vector2(-direction.y, direction.x);
+            Vector2 tail = center - direction * 18f * scale;
+            Vector2 headBase = center + direction * 5f * scale;
+            Vector2 tip = center + direction * 22f * scale;
+            GL.Color(color);
+            AddQuad(
+                tail - perpendicular * 4f * scale,
+                headBase - perpendicular * 4f * scale,
+                headBase + perpendicular * 4f * scale,
+                tail + perpendicular * 4f * scale);
+            AddFilledCircle(tail, 4f * scale, color, 12);
+            AddTriangle(tip, headBase - perpendicular * 13f * scale, headBase + perpendicular * 13f * scale);
+        }
+
+        private static void DrawShadowedLabel(Rect rect, string text, GUIStyle style)
+        {
+            Color previous = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, 0.82f);
+            GUI.Label(new Rect(rect.x + 2f, rect.y + 2f, rect.width, rect.height), text, style);
+            GUI.color = previous;
+            GUI.Label(rect, text, style);
+        }
+
+        private static void AddQuad(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+        {
+            AddTriangle(a, b, c);
+            AddTriangle(a, c, d);
+        }
+
+        private static void AddTriangle(Vector2 a, Vector2 b, Vector2 c)
+        {
+            GL.Vertex3(a.x, a.y, 0f);
+            GL.Vertex3(b.x, b.y, 0f);
+            GL.Vertex3(c.x, c.y, 0f);
+        }
+
+        private bool EnsureWheelMaterial()
+        {
+            if (_wheelMaterial != null) return true;
+            Shader shader = Shader.Find("Hidden/Internal-Colored");
+            if (shader == null) return false;
+
+            _wheelMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+            _wheelMaterial.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            _wheelMaterial.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            _wheelMaterial.SetInt("_Cull", (int)CullMode.Off);
+            _wheelMaterial.SetInt("_ZWrite", 0);
+            _wheelMaterial.SetInt("_ZTest", (int)CompareFunction.Always);
+            return true;
+        }
+
+        internal void Dispose()
+        {
+            if (_wheelMaterial == null) return;
+            Object.Destroy(_wheelMaterial);
+            _wheelMaterial = null;
         }
 
         private static void DrawSolid(Rect rect, Color color)

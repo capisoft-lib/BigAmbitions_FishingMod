@@ -36,6 +36,19 @@ namespace FishingMod.Editor
             Check(FishingFishCatalog.All.Count == 6, "six weighted fish available");
             Check(Mathf.Approximately(FishingQteSession.FailureMeters, FishingQteSession.SuccessMeters * 0.5f),
                 "QTE mistake loses half a successful pull");
+            Check(FishingMath.VisibleProgressSegments(0f, 96) == 0,
+                "QTE line ring starts empty");
+            Check(FishingMath.VisibleProgressSegments(0.5f, 96) == 48,
+                "QTE line ring shows half the retrieved line");
+            Check(FishingMath.VisibleProgressSegments(1f, 96) == 96,
+                "QTE line ring completes with the catch");
+            Rect fullHdWheel = FishingQteOverlay.CenteredWheelRect(1920f, 1080f);
+            Check(fullHdWheel.center == new Vector2(960f, 540f),
+                "QTE control wheel is centered on screen");
+            Check(Mathf.Approximately(fullHdWheel.width, fullHdWheel.height) && Mathf.Approximately(fullHdWheel.width, 340f),
+                "QTE control wheel stays round and responsively capped");
+            Check(Shader.Find("Hidden/Internal-Colored") != null,
+                "QTE control wheel shader available");
         }
 
         private static void CheckHappinessBehavior()

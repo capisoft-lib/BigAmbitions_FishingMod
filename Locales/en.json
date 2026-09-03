@@ -26,7 +26,7 @@
   "fishingmod_qte_hooked": "{fish} hooked!",
   "fishingmod_qte_rarity_bonus": "{rarity}  |  +{bonus}% happiness for 3 days",
   "fishingmod_qte_line": "{meters} m of line remaining",
-  "fishingmod_qte_instruction": "Press the shown key. A mistake only releases half of one successful pull.",
+  "fishingmod_qte_instruction": "Press the highlighted arrow or the centre circle for Space.",
   "fishingmod_qte_cancel": "Escape: abandon the fish",
   "fishingmod_qte_success": "Good! 3.5 m reeled in",
   "fishingmod_qte_failure": "Missed: 1.75 m released",

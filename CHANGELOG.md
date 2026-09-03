@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Redesign the QTE as a polished circular control wheel centered on screen, with no rectangular panel: four direction arrows, a central Space control and a green outer ring that fills as the line is reeled in.
+- Start the cast within 25 cm of the selected shoreline even if native navigation omits its arrival callback.
 - Add six weighted fish with strictly decreasing odds as quality increases.
 - Add an always-recoverable keyboard QTE: each success reels 3.5 m and each error releases 1.75 m.
 - Increase fight length and mildly shorten response windows with fish rarity while keeping every catch achievable.

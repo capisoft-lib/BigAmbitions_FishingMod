@@ -8,7 +8,7 @@ Fishing Mod adds a one-click fishing cast to Big Ambitions.
 2. Left-click visible water.
 3. The mod selects the closest shoreline point that is both on the current player NavMesh and reachable by a complete path.
 4. The character walks there, faces the clicked water and performs a long two-handed cast.
-5. A weighted random fish bites and a keyboard QTE starts. Press the displayed arrow/WASD/ZQSD key or Space to reel it in; Escape releases it.
+5. A weighted random fish bites and a keyboard QTE starts. Its round control wheel is centered on screen with no rectangular panel: one of four direction arrows turns black, or the centre circle turns black for Space, while the green outer ring fills as the line is reeled in. Press the matching arrow/WASD/ZQSD key or Space; Escape releases the fish.
 
 The sequence creates its own rod, reel, line, bobber and splash at runtime. It does not include or redistribute a Big Ambitions character model. A land, UI, vehicle, building or interactable-object click keeps its normal behavior.
 
