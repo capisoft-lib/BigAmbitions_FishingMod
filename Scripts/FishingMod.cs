@@ -7,8 +7,8 @@ using UnityEngine;
 
 [assembly: RegisterModClass(typeof(FishingMod.FishingModInitializationEntry))]
 [assembly: RegisterModClass(typeof(FishingMod.FishingModEntry))]
-[assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.0.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.0.1.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.0.1.0")]
 [assembly: InternalsVisibleTo("FishingMod.Editor")]
 
 namespace FishingMod
@@ -32,8 +32,8 @@ namespace FishingMod
                     message => context.Logger.Info(message));
                 bool registeredImmediately = FishingHappinessService.TryRegisterDefinitions();
                 context.Logger.Info(registeredImmediately
-                    ? "FishingMod 1.0.0 happiness bootstrap installed; the existing native registry was updated."
-                    : "FishingMod 1.0.0 happiness bootstrap armed for the native registry load.");
+                    ? "FishingMod 1.0.1 happiness bootstrap installed; the existing native registry was updated."
+                    : "FishingMod 1.0.1 happiness bootstrap armed for the native registry load.");
             }
             catch
             {
@@ -83,7 +83,7 @@ namespace FishingMod
                 throw;
             }
 
-            context.Logger.Info("FishingMod 1.0.0 ready. Click outdoor water to cast, hook a fish and reel it in.");
+            context.Logger.Info("FishingMod 1.0.1 ready. Click outdoor water to cast, hook a fish and reel it in.");
             return Task.CompletedTask;
         }
 

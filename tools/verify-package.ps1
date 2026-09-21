@@ -26,7 +26,7 @@ try {
     if ('0Harmony' -notin $references) {
         throw 'FishingMod must reference the packaged Harmony assembly.'
     }
-    if ($compiledAssembly.Name.Version.ToString() -ne '1.0.0.0') {
+    if ($compiledAssembly.Name.Version.ToString() -ne '1.0.1.0') {
         throw "Unexpected FishingMod assembly version $($compiledAssembly.Name.Version)."
     }
 }

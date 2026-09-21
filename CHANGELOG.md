@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- Publish the 408-polygon static water atlas: wooden pontoons, the Yacht Club deck, the Industry City ParkingSea pier, Harbor park and waterfront decks stay excluded; channels between walkways remain fishable.
+- Keep cast-in-place, the 10 m water distance check, optional QTE, automatic sales and happiness rewards.
+
 ## 1.0.0
 
 - Exclude the native wooden pontoons and Yacht Club deck from fishing water polygons.

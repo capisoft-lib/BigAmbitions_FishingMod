@@ -2,7 +2,7 @@
 
 Fishing Mod adds a one-click fishing cast to Big Ambitions.
 
-Version 1.0.0 casts from the player's current position to the exact clicked water
+Version 1.0.1 casts from the player's current position to the exact clicked water
 coordinates. No shoreline path or automatic walking is required. The player must be within
 10 horizontal metres of a mapped water polygon (X/Z projection, ignoring height).
 Both click and F enforce this limit and display the measured distance if too far away. Outdoors, on foot
@@ -79,7 +79,7 @@ The distributable package also includes [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOT
 
 ## Current scope
 
-Version 1.0.0 includes casting, six fish, the optional QTE, automatic sales and saved native happiness modifiers. Happiness definitions register before save deserialization. Fish are sold directly rather than added to inventory. Fishing skill progression and a dedicated catch history are not included. Right-click camera control does not cancel fishing, and the final QTE key remains blocked until release.
+Version 1.0.1 includes casting, six fish, the optional QTE, automatic sales and saved native happiness modifiers. Happiness definitions register before save deserialization. Fish are sold directly rather than added to inventory. Fishing skill progression and a dedicated catch history are not included. Right-click camera control does not cancel fishing, and the final QTE key remains blocked until release.
 
 ## Installation
 
