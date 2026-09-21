@@ -1,10 +1,11 @@
 using System;
+using HarmonyLib;
+using BigAmbitions.InputSystem;
 using Helpers;
 using UI.MiniMenu;
 using UI.Smartphone;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.Events;
 
 namespace FishingMod
 {
@@ -16,7 +17,6 @@ namespace FishingMod
         private enum SequenceState
         {
             Idle,
-            Walking,
             Casting,
             WaitingForBite,
             RetrievingEmptyLine,
@@ -24,7 +24,6 @@ namespace FishingMod
         }
 
         private readonly FishingWaterDetector _waterDetector = new FishingWaterDetector();
-        private readonly FishingShoreResolver _shoreResolver = new FishingShoreResolver();
         private readonly FishingHappinessService _happiness = new FishingHappinessService();
         private readonly FishingQteOverlay _overlay = new FishingQteOverlay();
         private readonly System.Random _random = new System.Random(Guid.NewGuid().GetHashCode());
@@ -34,25 +33,40 @@ namespace FishingMod
         private SequenceState _state;
         private PlayerController _player;
         private FishingCastVisual _cast;
+        private FishingCastVisual _preparedCast;
+        private float _nextVisualPrepareAt;
         private Vector3 _waterPoint;
         private Vector3 _shorePoint;
         private bool _ownsNavigationBlocker;
         private bool _disposed;
-        private float _walkStartedAt;
+        private static FishingRuntime _inputOwner;
+        private Harmony _inputHarmony;
+        private PlayerController _pendingInputPlayer;
+        private bool _waitingForInputRelease;
+        private int _lastQteInputFrame;
         private FishingFish _pendingFish;
-        private float _biteWaitRemaining;
+        private FishingBiteTimer _biteTimer;
         private float _emptyLineRetrieveElapsed;
         private bool _emptyLineReelRepeatPlayed;
         private bool _activityBonusApplied;
         private FishingQteSession _qte;
+        private bool _automaticCatch;
+        private float _automaticCatchElapsed;
         private FishingQteOutcome _lastQteOutcome;
         private float _qteFeedbackUntil;
         private string _resultMessage;
         private float _resultMessageUntil;
+        private float _nextClickDiagnosticAt;
 
         internal void Initialize(string modRootPath, Action<string> log)
         {
             _log = log ?? (_ => { });
+            _inputOwner = this;
+            _inputHarmony = new Harmony("capisoft.fishingmod.qte-input");
+            _inputHarmony.Patch(AccessTools.Method(typeof(GameManager), "ShouldBlockKeyboardShortcuts"),
+                prefix: new HarmonyMethod(typeof(FishingRuntime), nameof(BlockQteShortcuts)));
+            _inputHarmony.Patch(AccessTools.Method(typeof(GameSpeedController), "TogglePause"),
+                prefix: new HarmonyMethod(typeof(FishingRuntime), nameof(BlockQteSpacePause)));
             try
             {
                 _audio = new FishingAudio();
@@ -75,14 +89,26 @@ namespace FishingMod
                 Debug.LogException(exception);
                 _log("[FishingMod] Happiness registry was not ready; registration will be retried after the cast.");
             }
-            _log("[FishingMod] Cached " + _waterDetector.IndexedTileCount
-                + " local water tile(s) across " + _waterDetector.SurfaceCount
-                + " height group(s) for scene " + UnityEngine.SceneManagement.SceneManager.GetActiveScene().handle + ".");
+            _log("[FishingMod] Static water atlas ready: " + FishingWaterDetector.StaticPolygonCount
+                + " polygons, Y=" + FishingWaterDetector.StaticSeaHeight
+                + "; scene scans disabled; click visibility checks enabled; cast in place; F casts with the same water and land validation.");
         }
 
         private void Update()
         {
             if (_disposed) return;
+            if (_waitingForInputRelease)
+            {
+                bool held = QteKeysHeld();
+                if (held) _lastQteInputFrame = Time.frameCount;
+                if (FishingInputRules.CanReleaseQteInput(held, Time.frameCount, _lastQteInputFrame))
+                    ReleasePendingInput();
+                return;
+            }
+            _cast?.RestoreFingerPose();
+
+            if ((_state == SequenceState.Casting || _state == SequenceState.WaitingForBite
+                || _state == SequenceState.RetrievingEmptyLine) && TryCancelPendingActivity()) return;
 
             if (_state == SequenceState.Casting)
             {
@@ -92,7 +118,10 @@ namespace FishingMod
                     return;
                 }
 
-                _cast.Advance(Time.deltaTime);
+                if (IsQtePausedByUi()) return;
+                float previousElapsed = _cast.Elapsed;
+                _cast.Advance(Time.unscaledDeltaTime);
+                _biteTimer?.AdvanceCast(previousElapsed, _cast.Elapsed, _cast.ImpactTime);
                 if (_cast.ConsumeReleaseSoundEvent())
                     _audio?.Play(FishingSound.ReelOut, 0.42f, 1.04f);
                 if (_cast.ConsumeSplashSoundEvent())
@@ -119,28 +148,7 @@ namespace FishingMod
                 return;
             }
 
-            if (_state == SequenceState.Walking)
-            {
-                if (_player != null && _player.Character != null &&
-                    (_player.transform.position - _shorePoint).sqrMagnitude <= 0.0625f)
-                {
-                    OnShoreReached();
-                    return;
-                }
-
-                if (_player == null || !_player.hasOnGoalReachedAction)
-                {
-                    CancelSequence("shore movement was cancelled");
-                    return;
-                }
-
-                if (Time.unscaledTime - _walkStartedAt > 120f)
-                {
-                    CancelSequence("shore movement timed out");
-                    return;
-                }
-            }
-
+            PrepareCastVisual();
             TryHandleWaterClick();
         }
 
@@ -162,7 +170,7 @@ namespace FishingMod
             GUI.depth = -1000;
             try
             {
-                if (_state == SequenceState.Hooked && _qte != null && !IsQtePausedByUi())
+                if (_state == SequenceState.Hooked && !_automaticCatch && _qte != null && !IsQtePausedByUi())
                     _overlay.DrawQte(_qte, _lastQteOutcome, Time.unscaledTime < _qteFeedbackUntil);
                 else if (_state == SequenceState.WaitingForBite && !IsQtePausedByUi())
                     _overlay.DrawWaiting();
@@ -175,89 +183,124 @@ namespace FishingMod
             }
         }
 
+        private void PrepareCastVisual()
+        {
+            // Prepare once as soon as the city character exists, before a cast.
+            if (!GameManager.IsInitialized || GameManager.isCitySceneBeingUnloaded) return;
+            var character = GameManager.Instance?.playerController?.Character;
+            if (character == null || character.animator == null || !character.animator.isInitialized) return;
+            if (_preparedCast != null && _preparedCast.CanReuse(character)) return;
+            if (Time.unscaledTime < _nextVisualPrepareAt) return;
+            _nextVisualPrepareAt = Time.unscaledTime + 1f;
+            _preparedCast?.Dispose();
+            _preparedCast = null;
+            try { _preparedCast = new FishingCastVisual(character, character.transform.position, startImmediately: false); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        }
+
         private void TryHandleWaterClick()
         {
-            if (!Input.GetMouseButtonDown(0)) return;
-            if (!TryGetReadyPlayer(out PlayerController player)) return;
-
-            EventSystem eventSystem = EventSystem.current;
-            if (eventSystem != null && eventSystem.IsPointerOverGameObject()) return;
-            if (MouseController.currentTargetEntity != null && MouseController.currentTargetEntity.primaryInteractionEnabled) return;
-
-            Camera camera = GameManager.GetMainCamera();
-            if (camera == null) return;
-            Ray ray = camera.ScreenPointToRay(Input.mousePosition);
-            if (!_waterDetector.TryGetWaterPoint(ray, player.Character.transform, out Vector3 waterPoint)) return;
-
-            if (!_shoreResolver.TryFindClosestReachable(
-                    player.Character.navmeshAgent,
-                    player.Character.transform.position,
-                    waterPoint,
-                    out Vector3 shorePoint,
-                    out float pathLength))
+            bool keyboardCast = Input.GetKeyDown(KeyCode.F);
+            if (!Input.GetMouseButtonDown(0) && !keyboardCast) return;
+            if (!TryGetReadyPlayer(out PlayerController player, out string reason))
             {
-                Debug.LogWarning("[FishingMod] Water clicked, but no complete shoreline route was found.");
+                LogRefusedClick(reason, player);
                 return;
             }
 
-            if (_state == SequenceState.Walking) CancelSequence("replaced by a new water click");
-            StartWalking(player, waterPoint, shorePoint, pathLength);
+            EventSystem eventSystem = EventSystem.current;
+            if (eventSystem != null && eventSystem.IsPointerOverGameObject()) { LogRefusedClick("pointer_over_ui",player); return; }
+            if (MouseController.currentTargetEntity != null && MouseController.currentTargetEntity.primaryInteractionEnabled)
+            {
+                var entity = MouseController.currentTargetEntity;
+                LogRefusedClick("native_interaction type=" + entity.GetType().Name + " object=" + entity.name,player);
+                return;
+            }
+
+            Camera camera = GameManager.GetMainCamera();
+            if (camera == null) { LogRefusedClick("no_camera",player); return; }
+            if (_preparedCast == null || !_preparedCast.CanReuse(player.Character))
+            { LogRefusedClick("visual_preparing", player); return; }
+            Ray ray = camera.ScreenPointToRay(Input.mousePosition);
+            bool foundWater = _waterDetector.TryGetWaterPoint(ray, player.Character.transform, out Vector3 waterPoint);
+            if (!foundWater)
+            {
+                var blocker = _waterDetector.LastBlockingCollider;
+                string details = _waterDetector.LastFailureReason + " target=" + Format(_waterDetector.LastCandidatePoint);
+                if (blocker != null)
+                {
+                    string path = blocker.name;
+                    for (Transform parent = blocker.transform.parent; parent != null; parent = parent.parent)
+                        path = parent.name + "/" + path;
+                    details += " blocker=" + path + " type=" + blocker.GetType().Name
+                        + " layer=" + LayerMask.LayerToName(blocker.gameObject.layer)
+                        + " boundsCenter=" + Format(blocker.bounds.center) + " boundsSize=" + Format(blocker.bounds.size);
+                }
+                LogRefusedClick(details,player);
+                if(_waterDetector.LastFailureReason=="solid_occlusion" || _waterDetector.LastFailureReason=="land_before_water") ShowResult(FishingText.ForceCastHint);
+                else if(keyboardCast) ShowResult(FishingText.NoWaterTarget);
+                return;
+            }
+
+            if (!_waterDetector.IsPlayerNearWater(player.Character.transform.position, out float shoreDistance))
+            {
+                LogRefusedClick("too_far_from_water distance=" + shoreDistance.ToString("0.0")
+                    + "m limit=" + FishingWaterDetector.MaxFishingDistance.ToString("0") + "m", player);
+                ShowResult(FishingText.TooFarFromWater(shoreDistance));
+                return;
+            }
+
+            _log("[FishingMod] Static water target " + _waterDetector.LastMatchedZoneId + " at " + Format(waterPoint)
+                + (keyboardCast ? " (keyboard cast)." : "."));
+            StartCastAtCurrentPosition(player, waterPoint);
         }
 
-        private static bool TryGetReadyPlayer(out PlayerController player)
+        private void LogRefusedClick(string reason, PlayerController player)
+        {
+            if (Time.unscaledTime < _nextClickDiagnosticAt) return;
+            _nextClickDiagnosticAt = Time.unscaledTime + 1f;
+            string position = player != null && player.Character != null
+                ? Format(player.Character.transform.position) : "unavailable";
+            _log("[FishingMod] Click refused: " + reason + "; player=" + position + "; timeScale=" + Time.timeScale + ".");
+        }
+
+        private static bool TryGetReadyPlayer(out PlayerController player, out string reason)
         {
             player = null;
+            reason = "city_not_ready";
             try
             {
                 if (!GameManager.IsInitialized || !BuildingManager.IsInitialized || GameManager.isCitySceneBeingUnloaded)
                     return false;
-                if (BuildingManager.IsInsideBuilding || CityMap.IsOpen || FullMenu.IsOpen || MiniMenu.IsOpen)
-                    return false;
-                if (GameManager.ShouldBlockKeyboardShortcuts() || GameManager.HasInputSelected())
-                    return false;
-                if (PlayerHelper.playerDead || PlayerHelper.IsUsingVehicle || PlayerHelper.IsHoldingItem)
-                    return false;
-
                 GameManager game = GameManager.Instance;
                 player = game != null ? game.playerController : null;
-                if (player == null || player.Character == null || player.awaitingRepositioning || player.NavigationDisabled)
-                    return false;
-                if (!player.IsOnNavmesh() || !Application.isFocused) return false;
+                if (BuildingManager.IsInsideBuilding) { reason="inside_building"; return false; }
+                if (CityMap.IsOpen || FullMenu.IsOpen || MiniMenu.IsOpen) { reason="menu_open"; return false; }
+                if (GameManager.ShouldBlockKeyboardShortcuts()) { reason="native_shortcuts_blocked"; return false; }
+                if (GameManager.HasInputSelected()) { reason="text_input_selected"; return false; }
+                if (FuneralHelper.PlayerDead) { reason="player_dead"; return false; }
+                if (PlayerHelper.IsUsingVehicle) { reason="using_vehicle"; return false; }
+                if (PlayerHelper.IsHoldingItem) { reason="holding_item"; return false; }
+                if (player == null || player.Character == null) { reason="no_player"; return false; }
+                if (player.awaitingRepositioning) { reason="awaiting_repositioning"; return false; }
+                if (player.NavigationDisabled) { reason="navigation_disabled"; return false; }
+                if (!Application.isFocused) { reason="game_not_focused"; return false; }
+                reason = null;
                 return true;
             }
-            catch
+            catch (Exception exception)
             {
                 player = null;
+                reason = "readiness_exception=" + exception.GetType().Name;
                 return false;
             }
         }
 
-        private void StartWalking(PlayerController player, Vector3 waterPoint, Vector3 shorePoint, float pathLength)
+        private void StartCastAtCurrentPosition(PlayerController player, Vector3 waterPoint)
         {
             _player = player;
             _waterPoint = waterPoint;
-            _shorePoint = shorePoint;
-            _state = SequenceState.Walking;
-            _walkStartedAt = Time.unscaledTime;
-
-            UnityAction onReached = OnShoreReached;
-            player.SetGoal(shorePoint, onReached);
-            if (!player.hasOnGoalReachedAction)
-            {
-                CancelSequence("native player navigation rejected the shoreline goal");
-                return;
-            }
-
-            _log("[FishingMod] Water click accepted; shoreline "
-                + Vector3.Distance(player.transform.position, shorePoint).ToString("0.0")
-                + " m away, route " + pathLength.ToString("0.0") + " m.");
-        }
-
-        private void OnShoreReached()
-        {
-            if (_disposed || _state != SequenceState.Walking || _player == null || _player.Character == null)
-                return;
-
+            _shorePoint = player.Character.transform.position;
             try
             {
                 ThirdPersonCharacter character = _player.Character;
@@ -265,15 +308,18 @@ namespace FishingMod
                 facing.y = 0f;
                 if (facing.sqrMagnitude < 0.01f) facing = character.transform.forward;
 
-                _player.ResetWalkingAnimation();
+                if(character.navmeshAgent!=null && character.navmeshAgent.enabled && character.navmeshAgent.isOnNavMesh)
+                    _player.ResetWalkingAnimation();
+                else _player.RemoveGoal();
                 character.ForceToRotation(Quaternion.LookRotation(facing.normalized, Vector3.up));
                 _player.SetNavigationBlocker(NavigationBlocker.EntertainActivity);
                 _ownsNavigationBlocker = true;
                 PlanBiteAtCastStart();
-                _cast = new FishingCastVisual(character, _waterPoint);
+                _cast = _preparedCast;
+                _cast.BeginCast(_waterPoint);
                 _audio?.Play(FishingSound.Cast, 0.48f, 1f);
                 _state = SequenceState.Casting;
-                _log("[FishingMod] Shore reached at " + Format(_shorePoint) + "; long cast started toward " + Format(_waterPoint) + ".");
+                _log("[FishingMod] Cast started in place at " + Format(_shorePoint) + "; exact target " + Format(_waterPoint) + ".");
             }
             catch (Exception exception)
             {
@@ -303,17 +349,19 @@ namespace FishingMod
             _state = SequenceState.WaitingForBite;
             _log("[FishingMod] Cast completed; "
                 + (_pendingFish != null ? _pendingFish.FallbackName + " will bite" : "no fish selected")
-                + " after " + _biteWaitRemaining.ToString("0.0")
-                + " s. Fishing activity +10/48 h applied=" + _activityBonusApplied + ".");
+                + " in " + _biteTimer.RemainingSeconds.ToString("0.0")
+                + " s (planned " + _biteTimer.DurationSeconds.ToString("0.0")
+                + " s after water impact). Fishing activity +10/48 h applied=" + _activityBonusApplied + ".");
         }
 
         private void PlanBiteAtCastStart()
         {
             bool hasFish = FishingBiteRules.HasFish(_random.NextDouble());
             _pendingFish = hasFish ? FishingFishCatalog.Select(_random.NextDouble()) : null;
-            _biteWaitRemaining = hasFish
+            float delay = hasFish
                 ? FishingBiteRules.BiteDelaySeconds(_random.NextDouble())
                 : FishingBiteRules.NoFishWaitSeconds;
+            _biteTimer = new FishingBiteTimer(delay);
         }
 
         private void UpdateWaitingForBite()
@@ -324,7 +372,7 @@ namespace FishingMod
                 return;
             }
 
-            if (GameManager.isCitySceneBeingUnloaded || PlayerHelper.playerDead)
+            if (GameManager.isCitySceneBeingUnloaded || FuneralHelper.PlayerDead)
             {
                 CancelSequence("player became unavailable while waiting for a bite");
                 return;
@@ -334,8 +382,8 @@ namespace FishingMod
 
             float deltaTime = Time.unscaledDeltaTime;
             _cast.AdvanceWaiting(deltaTime, 0f);
-            _biteWaitRemaining -= deltaTime;
-            if (_biteWaitRemaining > 0f) return;
+            _biteTimer.Advance(deltaTime);
+            if (!_biteTimer.IsDue) return;
 
             if (_pendingFish == null)
             {
@@ -343,16 +391,20 @@ namespace FishingMod
                 _emptyLineReelRepeatPlayed = false;
                 _audio?.Play(FishingSound.ReelIn, 0.34f, 0.96f);
                 _state = SequenceState.RetrievingEmptyLine;
-                _log("[FishingMod] No fish bit after 20.0 s; reeling the empty line in.");
+                _log("[FishingMod] No fish selected; empty line retrieval after "
+                    + _biteTimer.ElapsedSeconds.ToString("0.00") + " active seconds in water (target 20.00 s).");
                 return;
             }
 
             FishingFish fish = _pendingFish;
             _pendingFish = null;
-            _qte = new FishingQteSession(fish, _random);
+            _qte = new FishingQteSession(fish, _random, FishingOptions.Difficulty);
+            _automaticCatch = !FishingOptions.EnableQte;
+            _automaticCatchElapsed = 0f;
             _cast.AdvanceFight(0f, _qte.Progress);
             _state = SequenceState.Hooked;
-            _log("[FishingMod] " + fish.FallbackName + " hooked (conditional weight "
+            _log("[FishingMod] " + fish.FallbackName + " hooked after " + _biteTimer.ElapsedSeconds.ToString("0.00")
+                + " active seconds in water (target " + _biteTimer.DurationSeconds.ToString("0.00") + " s; conditional weight "
                 + fish.ChanceWeight + "%, initial line progress "
                 + (FishingQteSession.InitialProgress * 100f).ToString("0") + "%, "
                 + fish.RequiredSuccesses + " configured pulls, +"
@@ -367,7 +419,7 @@ namespace FishingMod
                 return;
             }
 
-            if (GameManager.isCitySceneBeingUnloaded || PlayerHelper.playerDead)
+            if (GameManager.isCitySceneBeingUnloaded || FuneralHelper.PlayerDead)
             {
                 CancelSequence("player became unavailable while reeling the line in");
                 return;
@@ -401,7 +453,7 @@ namespace FishingMod
                 return;
             }
 
-            if (GameManager.isCitySceneBeingUnloaded || PlayerHelper.playerDead)
+            if (GameManager.isCitySceneBeingUnloaded || FuneralHelper.PlayerDead)
             {
                 CancelSequence("player became unavailable during the fishing QTE");
                 return;
@@ -416,6 +468,19 @@ namespace FishingMod
             }
 
             if (IsQtePausedByUi()) return;
+
+            if (_automaticCatch)
+            {
+                _automaticCatchElapsed += Time.unscaledDeltaTime;
+                _cast.AdvanceFight(Time.unscaledDeltaTime, Mathf.Lerp(FishingQteSession.InitialProgress, 1f,
+                    _automaticCatchElapsed / EmptyLineRetrievalSeconds));
+                if (_automaticCatchElapsed >= EmptyLineRetrievalSeconds)
+                {
+                    _qte.CompleteAutomatically();
+                    CompleteCatch();
+                }
+                return;
+            }
 
             FishingQteOutcome outcome = TryReadQteCommand(out FishingQteCommand command)
                 ? _qte.Submit(command)
@@ -444,13 +509,15 @@ namespace FishingMod
             if (outcome == FishingQteOutcome.Escaped)
             {
                 FishingFish escapedFish = _qte.Fish;
-                _audio?.Play(FishingSound.LineSnap, 0.58f, 0.94f);
-                _log("[FishingMod] " + escapedFish.FallbackName + " escaped after line progress reached 0%.");
-                string escaped = FishingText.Escaped(escapedFish);
+                FishingMoneyResult loss = FishingEconomyService.Settle(_qte, _log);
+                string escaped = FishingText.Escaped(escapedFish) + "\n" + FishingText.MoneyResult(loss, caught: false);
+                // Clear the terminal session before optional presentation can throw or re-enter.
                 ReleaseCastResources();
                 _state = SequenceState.Idle;
                 _player = null;
                 ShowResult(escaped);
+                _audio?.Play(FishingSound.LineSnap, 0.58f, 0.94f);
+                _log("[FishingMod] " + escapedFish.FallbackName + " escaped after line progress reached 0%.");
                 return;
             }
 
@@ -459,7 +526,12 @@ namespace FishingMod
 
         private void CompleteCatch()
         {
+            if (_qte == null || !_qte.IsComplete) return;
             FishingFish caughtFish = _qte.Fish;
+            FishingMoneyResult sale = FishingEconomyService.Settle(_qte, _log);
+            ReleaseCastResources();
+            _state = SequenceState.Idle;
+            _player = null;
             FishingCatchBonusResult bonus;
             try
             {
@@ -472,14 +544,11 @@ namespace FishingMod
                 bonus = new FishingCatchBonusResult(caughtFish, caughtFish, happinessEnabled: false);
             }
 
-            string result = FishingText.Caught(bonus);
+            string result = FishingText.Caught(bonus) + "\n" + FishingText.MoneyResult(sale, caught: true);
+            ShowResult(result);
             _audio?.Play(FishingSound.FishLanded, 0.64f, 0.98f + (float)_random.NextDouble() * 0.04f);
             _log("[FishingMod] Caught " + caughtFish.FallbackName + "; active catch bonus "
                 + bonus.CountedFish.FallbackName + " +" + bonus.CountedFish.HappinessBonus + "/72 h.");
-            ReleaseCastResources();
-            _state = SequenceState.Idle;
-            _player = null;
-            ShowResult(result);
         }
 
         private static bool TryReadQteCommand(out FishingQteCommand command)
@@ -514,9 +583,54 @@ namespace FishingMod
             return false;
         }
 
-        private static bool IsQtePausedByUi()
+        private bool IsQtePausedByUi()
         {
-            return !Application.isFocused || CityMap.IsOpen || FullMenu.IsOpen || MiniMenu.IsOpen;
+            bool uiBlocked = !Application.isFocused || CityMap.IsOpen || FullMenu.IsOpen || MiniMenu.IsOpen;
+            return FishingInputRules.PausesClock(uiBlocked, Time.timeScale <= 0f, _state == SequenceState.Hooked && !_automaticCatch);
+        }
+
+        private bool TryCancelPendingActivity()
+        {
+            bool menuOpen = CityMap.IsOpen || FullMenu.IsOpen || MiniMenu.IsOpen;
+            bool movement = false;
+            if (Application.isFocused && !menuOpen && !GameManager.HasInputSelected())
+            {
+                bool useLegacyKeys = true;
+                try
+                {
+                    if (InputHelper.IsInitialized())
+                    {
+                        movement = PlayerAction.Move.Vector().sqrMagnitude > 0.01f || PlayerAction.AutoRun.Pressed();
+                        useLegacyKeys = false;
+                    }
+                }
+                catch { /* Legacy keyboard fallback also works before native bindings are ready. */ }
+                if (useLegacyKeys) movement = Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.S)
+                    || Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.Z) || Input.GetKey(KeyCode.Q)
+                    || Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.LeftArrow)
+                    || Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.RightArrow);
+            }
+            // Right-click controls the camera and must not cancel fishing.
+            bool clicked = Input.GetMouseButtonDown(0);
+            bool displaced = _player != null && (_player.transform.position - _shorePoint).sqrMagnitude > 0.25f;
+            if (!FishingInputRules.CancelsWaiting(Application.isFocused, GameManager.HasInputSelected(), menuOpen,
+                    clicked, movement, Input.GetKeyDown(KeyCode.Escape), displaced)) return false;
+
+            PlayerController player = _player;
+            CancelSequence("cancelled by click, movement or Escape before the fight");
+            ShowResult(FishingText.WaitCancelled);
+            // We run after vanilla input, which could not navigate while our blocker was
+            // held. Replay only the ordinary ground destination so the cancelling click works.
+            if (Input.GetMouseButtonDown(0) && !menuOpen && player != null
+                && (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
+                && (MouseController.currentTargetEntity == null || !MouseController.currentTargetEntity.primaryInteractionEnabled))
+            {
+                Camera camera = GameManager.GetMainCamera();
+                if (camera != null && Physics.Raycast(camera.ScreenPointToRay(Input.mousePosition),
+                        out RaycastHit hit, 800f, LayerHelper.mouseGroundMask))
+                    player.SetNewDestination(hit.point, showParticleEffect: true);
+            }
+            return true;
         }
 
         private void ShowResult(string message)
@@ -527,8 +641,6 @@ namespace FishingMod
 
         private void CancelSequence(string reason)
         {
-            if (_state == SequenceState.Walking && _player != null)
-                _player.RemoveGoal();
             ReleaseCastResources();
             if (_state != SequenceState.Idle) _log("[FishingMod] Sequence stopped: " + reason + ".");
             _state = SequenceState.Idle;
@@ -537,32 +649,88 @@ namespace FishingMod
 
         private void ReleaseCastResources()
         {
+            // Keep native input blocked until the terminal QTE key is released,
+            // including a full neutral frame for native key-up processing.
+            bool deferInputRelease = _state == SequenceState.Hooked && !_disposed;
             if (_cast != null)
             {
-                _cast.Dispose();
+                _cast.EndCast();
                 _cast = null;
             }
 
             _qte = null;
             _pendingFish = null;
-            _biteWaitRemaining = 0f;
+            _biteTimer = null;
             _emptyLineRetrieveElapsed = 0f;
             _emptyLineReelRepeatPlayed = false;
             _activityBonusApplied = false;
 
             if (_ownsNavigationBlocker && _player != null)
             {
-                try { _player.UnsetNavigationBlocker(NavigationBlocker.EntertainActivity); }
-                catch (Exception exception) { Debug.LogException(exception); }
+                if (deferInputRelease) _pendingInputPlayer = _player;
+                else
+                {
+                    try { _player.UnsetNavigationBlocker(NavigationBlocker.EntertainActivity); }
+                    catch (Exception exception) { Debug.LogException(exception); }
+                }
             }
 
             _ownsNavigationBlocker = false;
+            if (deferInputRelease)
+            {
+                _waitingForInputRelease = true;
+                _lastQteInputFrame = Time.frameCount;
+            }
+        }
+
+        private static bool QteKeysHeld()
+        {
+            return Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.DownArrow)
+                || Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.RightArrow)
+                || Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.S)
+                || Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.Z) || Input.GetKey(KeyCode.Q)
+                || Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.Escape);
+        }
+
+        private static bool OwnsQteInput => _inputOwner != null && !_inputOwner._disposed
+            && (_inputOwner._state == SequenceState.Hooked || _inputOwner._waitingForInputRelease);
+
+        private static bool BlockQteShortcuts(ref bool __result)
+        {
+            if (!OwnsQteInput) return true;
+            __result = true;
+            return false;
+        }
+
+        private static bool BlockQteSpacePause()
+        {
+            return !OwnsQteInput || !(Input.GetKey(KeyCode.Space) || Input.GetKeyUp(KeyCode.Space));
+        }
+
+        private void ReleasePendingInput()
+        {
+            try
+            {
+                if (_pendingInputPlayer != null)
+                    _pendingInputPlayer.UnsetNavigationBlocker(NavigationBlocker.EntertainActivity);
+            }
+            catch (Exception exception) { Debug.LogException(exception); }
+            _pendingInputPlayer = null;
+            _waitingForInputRelease = false;
         }
 
         internal void Dispose()
         {
             if (_disposed) return;
+            _disposed = true;
             CancelSequence("mod unloaded");
+            _preparedCast?.Dispose();
+            _preparedCast = null;
+            ReleasePendingInput();
+            _inputHarmony?.UnpatchAll(_inputHarmony.Id);
+            _inputHarmony = null;
+            if (_inputOwner == this) _inputOwner = null;
+            _waterDetector.CancelIndexing();
             _overlay.Dispose();
             _audio?.Dispose();
             _audio = null;

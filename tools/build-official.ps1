@@ -1,4 +1,7 @@
 param([int]$TimeoutSeconds = 600)
+foreach ($pathArgument in $PSBoundParameters.Values) {
+    if ($pathArgument -is [string] -and $pathArgument -match ('(^|[\\/])\.' + 'analysis([\\/]|$)')) { throw 'Legacy workspace paths are forbidden; use the system temporary directory.' }
+}
 $ErrorActionPreference = 'Stop'
 $modRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $modRoot '..\..\..'))
@@ -17,7 +20,7 @@ if (Test-Path -LiteralPath $output) {
 }
 $log = Join-Path $logRoot 'unity.log'
 $workspaceRoot = Split-Path $projectRoot -Parent
-$isolatedProject = Join-Path $workspaceRoot ".analysis\fishing-mod\official-$stamp"
+$isolatedProject = Join-Path ([IO.Path]::GetTempPath()) "BigAmbitions\fishing-mod\official-$stamp"
 New-Item -ItemType Directory -Path $isolatedProject -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot 'Packages') -Destination $isolatedProject -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot 'ProjectSettings') -Destination $isolatedProject -Recurse
@@ -66,6 +69,7 @@ $officialRelativeNames = @($officialPackageFiles | ForEach-Object {
 })
 $expectedRelativeNames = @(
     'CHANGELOG.md',
+    'Dependencies/0Harmony.dll',
     'FishingMod.dll',
     'Locales/en.json',
     'Locales/fr.json',
@@ -103,7 +107,7 @@ $result = [pscustomobject]@{
     Log = $log
     IsolatedProjectRemoved = $true
 }
-$scratchRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot '.analysis\fishing-mod'))
+$scratchRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) 'BigAmbitions\fishing-mod'))
 $resolvedIsolatedProject = [IO.Path]::GetFullPath($isolatedProject)
 $scratchPrefix = $scratchRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if (!$resolvedIsolatedProject.StartsWith($scratchPrefix, [StringComparison]::OrdinalIgnoreCase)) {

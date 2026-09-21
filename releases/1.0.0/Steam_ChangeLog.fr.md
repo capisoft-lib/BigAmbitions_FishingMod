@@ -1,15 +1,9 @@
-[b]1.0.0 — Première version stable de la pêche[/b]
+Fishing Mod 1.0.0
 
-[list]
-[*]Ajout de la détection protégée de l'eau extérieure en un clic et du déplacement automatique vers la rive accessible la plus proche.
-[*]Ajout d'un ample lancer procédural à deux mains avec canne, moulinet, fil, bouchon, trajectoire et éclaboussure générés par le mod.
-[*]Ajout de 80 % de chances d'avoir un poisson, d'une touche aléatoire après 2 à 20 secondes et de la remontée automatique d'une ligne vide après 20 secondes.
-[*]Ajout du QTE circulaire centré avec quatre directions, une commande Space centrale et un anneau vert indiquant la progression de la ligne.
-[*]Le QTE commence à 30 % ; une réussite remonte 3,5 m, une erreur ou un délai dépassé relâche 1,75 m et le poisson s'échappe à 0 %.
-[*]Ajout de six poissons de plus en plus rares avec probabilités pondérées, combats plus longs mais réalisables et bonus de bonheur croissants pendant 72 heures.
-[*]Ajout d'un bonus de pêche non cumulable de +10 de bonheur pendant 48 heures en jeu et de la règle du meilleur bonus de prise actif.
-[*]Ajout de huit sons de pêche CC0 dédiés avec crédits légaux et traitements complets.
-[*]Ajout des textes en jeu, descriptions de version et métadonnées Workshop en anglais et en français.
-[/list]
+- Exclusion des pontons en bois et des plateformes du Yacht Club des zones de pêche ; l’eau entre les passerelles reste accessible.
+- Préparation et réutilisation de la canne, du moulinet, du bouchon et des matériaux entre les lancers.
+- Précalcul des courbes fixes du fil et des rides ; mise en cache de la proximité de l’eau tant que le personnage reste au même endroit.
+- Conservation du QTE facultatif, de la difficulté mémorisée de 0,2 à 5,0, de la vente automatique et des bonus de bonheur.
+- Mise à jour des descriptions anglaise et française, des commandes, des options et des instructions d’installation.
 
-Redémarrez complètement Big Ambitions après l'installation. Utilisez soit Workshop, soit ModsLocal, jamais les deux.
+Redémarrez complètement Big Ambitions après la mise à jour. Utilisez une seule installation de Fishing Mod : Workshop ou ModsLocal.

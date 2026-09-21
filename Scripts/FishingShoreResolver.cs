@@ -12,6 +12,7 @@ namespace FishingMod
         private const float SampleRadius = 1.75f;
         private const int DirectionCount = 32;
         private const int MaxPathChecks = 160;
+        private const float MaxFishingHeight = 80f;
 
         private static readonly float[] SearchRadii =
         {
@@ -59,26 +60,33 @@ namespace FishingMod
             };
 
             _candidates.Clear();
-            AddSample(waterPoint, MaxShoreSearchDistance, filter, waterPoint);
-
-            float maximumUsefulRadius = MaxShoreSearchDistance;
-            if (_candidates.Count > 0)
-            {
-                float directDistance = HorizontalDistance(_candidates[0], waterPoint);
-                maximumUsefulRadius = Mathf.Min(MaxShoreSearchDistance, Mathf.Max(28f, directDistance + 28f));
-            }
+            // Start on the player's connected surface, including an elevated bridge. A
+            // radius-1.75 query at sea level cannot see the usual quay 2.8 m above it.
+            Vector3 playerLevelTarget = new Vector3(waterPoint.x, start.y, waterPoint.z);
+            Vector3 reachableEdge = start;
+            if (NavMesh.Raycast(start, playerLevelTarget, out NavMeshHit edgeHit, filter))
+                reachableEdge = edgeHit.position;
+            else if (NavMesh.SamplePosition(playerLevelTarget, out NavMeshHit targetHit, SampleRadius, filter))
+                reachableEdge = targetHit.position;
+            AddSample(reachableEdge, SampleRadius, filter, waterPoint);
+            AddSample(playerLevelTarget, SampleRadius, filter, waterPoint);
 
             for (int radiusIndex = 0; radiusIndex < SearchRadii.Length; radiusIndex++)
             {
                 float radius = SearchRadii[radiusIndex];
-                if (radius > maximumUsefulRadius) break;
 
                 float angularOffset = radiusIndex * 0.17320508f;
                 for (int directionIndex = 0; directionIndex < DirectionCount; directionIndex++)
                 {
                     float angle = angularOffset + directionIndex * Mathf.PI * 2f / DirectionCount;
                     Vector3 sample = waterPoint + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                    sample.y = start.y;
                     AddSample(sample, SampleRadius, filter, waterPoint);
+                    if (Mathf.Abs(start.y - waterPoint.y) > SampleRadius)
+                    {
+                        sample.y = waterPoint.y + 0.5f;
+                        AddSample(sample, SampleRadius, filter, waterPoint);
+                    }
                 }
             }
 
@@ -86,44 +94,43 @@ namespace FishingMod
                 .CompareTo(HorizontalDistanceSquared(right, waterPoint)));
 
             float bestScore = float.PositiveInfinity;
+            NavMeshPath path = new NavMeshPath();
+            // Keep a reachable fallback before nearer disconnected islands exhaust the
+            // bounded path-check budget. Never shrink the search to the first island.
+            EvaluateCandidate(reachableEdge, start, waterPoint, filter, path, ref bestScore, ref shorelinePoint, ref pathLength);
             int pathChecks = 0;
             for (int i = 0; i < _candidates.Count && pathChecks < MaxPathChecks; i++)
             {
-                Vector3 rawCandidate = _candidates[i];
-                if (Mathf.Abs(rawCandidate.y - waterPoint.y) > 12f) continue;
-
-                Vector3 away = rawCandidate - waterPoint;
-                away.y = 0f;
-                if (away.sqrMagnitude < 0.01f) continue;
-
-                Vector3 wanted = rawCandidate + away.normalized * ShoreInset;
-                if (!NavMesh.SamplePosition(wanted, out NavMeshHit insetHit, 2f, filter)) continue;
-                Vector3 candidate = insetHit.position;
-
-                NavMeshPath path = new NavMeshPath();
                 pathChecks++;
-                if (!NavMesh.CalculatePath(start, candidate, filter, path)
-                    || path.status != NavMeshPathStatus.PathComplete
-                    || path.corners == null || path.corners.Length == 0)
-                    continue;
-
-                Vector3 finalCorner = path.corners[path.corners.Length - 1];
-                if ((finalCorner - candidate).sqrMagnitude > 2.25f) continue;
-
-                float candidatePathLength = GetPathLength(path);
-                float waterDistance = HorizontalDistance(candidate, waterPoint);
-                float score = FishingMath.ShoreScore(
-                    waterDistance,
-                    candidatePathLength,
-                    Mathf.Abs(candidate.y - waterPoint.y));
-                if (score >= bestScore) continue;
-
-                bestScore = score;
-                shorelinePoint = candidate;
-                pathLength = candidatePathLength;
+                EvaluateCandidate(_candidates[i], start, waterPoint, filter, path, ref bestScore, ref shorelinePoint, ref pathLength);
             }
 
             return !float.IsPositiveInfinity(bestScore);
+        }
+
+        private static void EvaluateCandidate(Vector3 rawCandidate, Vector3 start, Vector3 waterPoint,
+            NavMeshQueryFilter filter, NavMeshPath path, ref float bestScore, ref Vector3 shorelinePoint, ref float pathLength)
+        {
+            float height = rawCandidate.y - waterPoint.y;
+            if (height < -0.5f || height > MaxFishingHeight
+                || HorizontalDistance(rawCandidate, waterPoint) > MaxShoreSearchDistance) return;
+            Vector3 away = rawCandidate - waterPoint;
+            away.y = 0f;
+            if (away.sqrMagnitude < 0.01f) return;
+            Vector3 wanted = rawCandidate + away.normalized * ShoreInset;
+            if (!NavMesh.SamplePosition(wanted, out NavMeshHit insetHit, SampleRadius, filter)) return;
+            Vector3 candidate = insetHit.position;
+            if (Mathf.Abs(candidate.y - rawCandidate.y) > SampleRadius) return;
+            if (!NavMesh.CalculatePath(start, candidate, filter, path) || path.status != NavMeshPathStatus.PathComplete) return;
+            Vector3[] corners = path.corners;
+            if (corners == null || corners.Length == 0 || (corners[corners.Length - 1] - candidate).sqrMagnitude > 2.25f) return;
+            float length = 0f;
+            for (int i = 1; i < corners.Length; i++) length += Vector3.Distance(corners[i - 1], corners[i]);
+            float score = FishingMath.ShoreScore(HorizontalDistance(candidate, waterPoint), length, height);
+            if (score >= bestScore) return;
+            bestScore = score;
+            shorelinePoint = candidate;
+            pathLength = length;
         }
 
         private void AddSample(Vector3 position, float maxDistance, NavMeshQueryFilter filter, Vector3 waterPoint)
@@ -138,14 +145,6 @@ namespace FishingMod
             }
 
             _candidates.Add(candidate);
-        }
-
-        private static float GetPathLength(NavMeshPath path)
-        {
-            float length = 0f;
-            for (int i = 1; i < path.corners.Length; i++)
-                length += Vector3.Distance(path.corners[i - 1], path.corners[i]);
-            return length;
         }
 
         private static float HorizontalDistance(Vector3 left, Vector3 right)

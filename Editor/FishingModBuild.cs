@@ -46,8 +46,15 @@ namespace FishingMod.Editor
                 string dll = Path.Combine(job.OutputDirectoryAbsolute, "FishingMod.dll");
                 if (!File.Exists(dll) || new FileInfo(dll).Length < 8192)
                     throw new InvalidOperationException("FishingMod.dll is missing or unexpectedly small.");
-                if (Directory.GetFiles(job.OutputDirectoryAbsolute, "*.dll", SearchOption.AllDirectories).Length != 1)
-                    throw new InvalidOperationException("FishingMod must package exactly one DLL.");
+                string harmony = Path.Combine(
+                    job.OutputDirectoryAbsolute,
+                    "Dependencies",
+                    "0Harmony.dll");
+                if (!File.Exists(harmony)
+                    || System.Reflection.AssemblyName.GetAssemblyName(harmony).Name != "0Harmony")
+                    throw new InvalidOperationException("FishingMod Harmony dependency is missing or invalid.");
+                if (Directory.GetFiles(job.OutputDirectoryAbsolute, "*.dll", SearchOption.AllDirectories).Length != 2)
+                    throw new InvalidOperationException("FishingMod must package its mod DLL and one Harmony DLL.");
 
                 int checks = FishingModChecks.Run();
                 if (checks < 10) throw new InvalidOperationException("FishingMod Unity checks were incomplete.");

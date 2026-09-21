@@ -1,47 +1,55 @@
-[b]Fishing Mod 1.0.0[/b]
+[h1]Fishing Mod — Take a break by the water[/h1]
 
-Turn Big Ambitions' city waters into a complete fishing activity. Click visible outdoor water, let your character walk to the nearest reachable shore, cast the line and reel in the catch through a polished circular keyboard QTE.
+Step away from your businesses, find a spot by the waterfront and cast your line. From a quiet shore to the Hamptons marina, turn a few spare minutes into a catch, a happiness boost and a little extra income.
 
-[b]Features[/b]
+[b]Six fish • Animated rod and line • Optional fishing minigame • Automatic fish sales[/b]
 
+[h2]Your next catch[/h2]
 [list]
-[*][b]One-click fishing[/b] — click outdoor water and the character finds a complete NavMesh route to the closest usable shoreline.
-[*][b]Procedural cast[/b] — the mod creates and animates its own rod, reel, line, bobber, splash and two-handed long-cast motion at runtime.
-[*][b]Uncertain bites[/b] — every cast has an 80% chance of attracting a fish. A fish bites after 2–20 seconds; an empty cast is automatically reeled in after 20 seconds.
-[*][b]Centered circular QTE[/b] — follow the four direction arrows or the central Space command while the green outer ring shows how much line has been recovered. Arrow keys, WASD, ZQSD and Space are supported.
-[*][b]Fair tension[/b] — the fight begins at 30%. A correct step reels in 3.5 m; a mistake or timeout releases only 1.75 m. The fish escapes only if progress falls back to 0%.
-[*][b]Six weighted fish[/b] — catch Roach, Perch, Trout, Carp, Pike and Sturgeon. Better fish are less likely and require longer sequences with mildly shorter response windows, while every fight remains achievable.
-[*][b]Meaningful rewards[/b] — a completed cast refreshes +10 happiness for 48 in-game hours. A catch adds a fish-dependent bonus for 72 hours; only the best active fish bonus counts, so repeated fishing cannot stack it indefinitely.
-[*][b]Complete sound sequence[/b] — dedicated effects cover the cast, outgoing reel, bobber splash, incoming reel, light QTE feedback, landed fish and snapped line.
+[*][b]Cast from where you stand.[/b] Click visible outdoor water, or aim at it and press F. Stand within 10 horizontal metres of a mapped water area; your character faces the water without walking to another spot.
+[*][b]Watch the bobber.[/b] Each cast has an 80% chance of attracting a fish. Bites arrive 2–20 seconds after the bobber hits the water. An empty line is automatically retrieved after 20 seconds.
+[*][b]Reel it in.[/b] Follow the circular keyboard minigame, or switch it off for automatic retrieval. The rod, reel, line, bobber and sound effects follow the fishing sequence.
+[*][b]Enjoy the rewards.[/b] Landed fish are sold automatically, with a transaction in your financial history. Fishing also grants happiness bonuses.
 [/list]
 
-[b]How to fish[/b]
-
+[h2]Six fish to discover[/h2]
 [list]
-[*]Be outdoors, on foot, with empty hands and no menu open.
-[*]Left-click visible water.
-[*]Wait for the character to reach the shore and cast.
-[*]If a fish bites, press the highlighted direction or Space before its response window expires.
-[*]Press Escape during the QTE to release the fish.
+[*]Roach — $5
+[*]Perch — $8
+[*]Trout — $15
+[*]Carp — $25
+[*]Pike — $40
+[*]Sturgeon — $75
 [/list]
+The rarer fish require longer fights. A completed cast grants +10 happiness for 48 in-game hours. A successful catch adds a fish bonus for 72 hours; only the best active catch bonus counts.
 
-Normal clicks on land, buildings, vehicles, UI and interactable objects keep their original behaviour.
-
-[b]Requirements[/b]
-
+[h2]How to fish[/h2]
 [list]
-[*]Big Ambitions 1.0 with mod support.
-[*]No other mods or libraries are required.
+[*][b]1. Find your spot.[/b] Be outdoors, on foot, with empty hands and no menu open. Stand near mapped water and aim at an unobstructed patch.
+[*][b]2. Cast.[/b] Left-click the water or press F while pointing at it.
+[*][b]3. Follow the prompts.[/b] When a fish bites, use the highlighted arrow, WASD/ZQSD direction or Space. Fill the green ring to land it.
+[*][b]4. Keep control.[/b] Right-click to adjust the camera without interrupting fishing. Escape releases the fish. Before a bite, moving or left-clicking also cancels the cast.
 [/list]
+The fight starts at 30% progress. Correct inputs recover line; mistakes and timeouts give some back. A line break at 0% costs up to $5, capped by your available positive balance. Empty casts and cancellations are free. The final minigame key is held back from normal character controls until it is released.
 
-[b]Installation[/b]
+[h2]Play at your own pace[/h2]
+In the game's mod options:
+[list]
+[*][b]Enable QTE[/b] — on by default. Turn it off to retrieve biting fish automatically with the normal rewards.
+[*][b]Difficulty[/b] — 0.2 to 5.0, default 1.0. Lower values give more time to respond; higher values give less.
+[/list]
+Settings are saved and apply when the next fish bites. Bite chance and waiting time stay the same.
 
-Subscribe on Steam Workshop, enable [b]Fishing Mod[/b] in the in-game Mods menu, and fully restart the game after installing or updating. Use one installation only: Workshop or ModsLocal, not both.
+[h2]What's new in 1.0.0[/h2]
+Wooden pontoons and the Yacht Club deck are excluded from fishing areas, while the water between the walkways stays available. Fishing visuals and materials are prepared in advance and reused between casts. Water areas are precomputed; there is no periodic city-wide water scan.
 
-[b]Audio and source[/b]
+[h2]Installation and compatibility[/h2]
+Subscribe, enable [b]Fishing Mod[/b] in the game's Mods menu, then restart the game completely after installing or updating. Use either Workshop or ModsLocal, never both for this mod.
 
-All eight packaged sound effects are redistributable under CC0 1.0. The source package keeps exact authors, links, licence declarations and processing details in [b]THIRD_PARTY_NOTICES.md[/b].
+Built for Big Ambitions 1.0, build 3680. No separate Workshop dependency is required; Harmony is included. Fishing covers mapped outdoor water around the city, Industry City and The Hamptons. Pools and arbitrary bodies of water are not supported. Normal ground clicks and native interactions keep their usual behaviour.
 
-[b]Source code:[/b] [url=https://github.com/capisoft-lib/BigAmbitions_FishingMod]GitHub — capisoft-lib/BigAmbitions_FishingMod[/url]
+[h2]Credits and source[/h2]
+The eight included sound effects are CC0; full credits and licence details are included in THIRD_PARTY_NOTICES.md.
+[url=https://github.com/capisoft-lib/BigAmbitions_FishingMod]Source code on GitHub[/url]
 
-Community mod by capisoft-lib, not affiliated with Hovgaard Games.
+Community mod by capisoft-lib. Not affiliated with Hovgaard Games.

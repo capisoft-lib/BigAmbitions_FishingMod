@@ -67,7 +67,14 @@ namespace FishingMod
         internal static string CancelHint => Loc("fishingmod_qte_cancel", "Escape: abandon the fish");
         internal static string Success => Loc("fishingmod_qte_success", "Good! 3.5 m reeled in");
         internal static string Failure => Loc("fishingmod_qte_failure", "Missed: 1.75 m released");
+        internal static string ForceCastHint => Loc("fishingmod_force_hint", "Land or an obstacle covers this target. Aim at clear water.");
+        internal static string NoWaterTarget => Loc("fishingmod_no_water", "Point at water to cast.");
+        internal static string TooFarFromWater(float distance) => Format(Format(
+            Loc("fishingmod_too_far", "Move closer to the water: {distance} m away (maximum {limit} m)."),
+            "distance", distance.ToString("0.0")), "limit", FishingWaterDetector.MaxFishingDistance.ToString("0"));
         internal static string Waiting => Loc("fishingmod_waiting", "Waiting for a bite...");
+        internal static string WaitCancelHint => Loc("fishingmod_wait_cancel_hint", "Click, move or press Escape to cancel.");
+        internal static string WaitCancelled => Loc("fishingmod_wait_cancelled", "Fishing cancelled. No money charged.");
         internal static string NoFish => Loc("fishingmod_result_no_fish", "Nothing bit. The line was reeled in.");
 
         internal static string Escaped(FishingFish fish)
@@ -106,6 +113,18 @@ namespace FishingMod
                 Loc("fishingmod_result_cancelled", "{fish} released. The fishing activity bonus is kept."),
                 "fish",
                 FishName(fish));
+        }
+
+        internal static string MoneyResult(FishingMoneyResult result, bool caught)
+        {
+            if (!result.Recorded)
+                return Loc("fishingmod_result_money_unconfirmed", "Money transaction could not be confirmed.");
+            if (!caught && result.Amount == 0f)
+                return Loc("fishingmod_result_line_free", "Line broken: no money charged.");
+            return Format(caught
+                    ? Loc("fishingmod_result_sold", "Auto-sold: +${amount}.")
+                    : Loc("fishingmod_result_line_cost", "Line replacement: -${amount}."),
+                "amount", Mathf.Abs(result.Amount).ToString("0.##"));
         }
 
         private static string Loc(string key, string fallback)
@@ -180,6 +199,8 @@ namespace FishingMod
                 new Rect((Screen.width - width) * 0.5f, Screen.height * 0.22f, width, 36f),
                 FishingText.Waiting,
                 _titleStyle);
+            DrawShadowedLabel(new Rect((Screen.width - width) * 0.5f, Screen.height * 0.22f + 36f, width, 36f),
+                FishingText.WaitCancelHint, _smallStyle);
         }
 
         internal static Rect CenteredWheelRect(float screenWidth, float screenHeight)
@@ -193,10 +214,11 @@ namespace FishingMod
             if (string.IsNullOrWhiteSpace(text)) return;
             EnsureStyles();
             float width = Mathf.Min(720f, Screen.width - 32f);
-            Rect toast = new Rect((Screen.width - width) * 0.5f, Mathf.Max(30f, Screen.height * 0.08f), width, 76f);
+            float textHeight = Mathf.Max(54f, _toastStyle.CalcHeight(new GUIContent(text), width - 36f));
+            Rect toast = new Rect((Screen.width - width) * 0.5f, Mathf.Max(30f, Screen.height * 0.08f), width, textHeight + 24f);
             DrawSolid(toast, new Color(0.025f, 0.055f, 0.075f, 0.94f));
             DrawSolid(new Rect(toast.x, toast.y, toast.width, 5f), new Color(0.18f, 0.75f, 0.95f, 1f));
-            GUI.Label(new Rect(toast.x + 18f, toast.y + 12f, toast.width - 36f, 54f), text, _toastStyle);
+            GUI.Label(new Rect(toast.x + 18f, toast.y + 12f, toast.width - 36f, textHeight), text, _toastStyle);
         }
 
         private void EnsureStyles()

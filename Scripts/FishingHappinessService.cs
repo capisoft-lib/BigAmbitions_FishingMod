@@ -49,7 +49,7 @@ namespace FishingMod
 
         internal void Initialize()
         {
-            EnsureDefinitionsRegistered();
+            RegisterDefinitions();
             if (SaveGameManager.Current != null)
                 HappinessHelper.UpdateHappiness();
         }
@@ -59,7 +59,7 @@ namespace FishingMod
             GameInstance save = SaveGameManager.Current;
             if (save == null || IsHappinessDisabled(save)) return false;
 
-            EnsureDefinitionsRegistered();
+            RegisterDefinitions();
             HappinessHelper.AddModifier(FishingActivityType, FishingActivityHours, additiveHours: false);
             SaveGameManager.MarkChange();
             return true;
@@ -72,7 +72,7 @@ namespace FishingMod
             if (save == null || IsHappinessDisabled(save))
                 return new FishingCatchBonusResult(caughtFish, caughtFish, happinessEnabled: false);
 
-            EnsureDefinitionsRegistered();
+            RegisterDefinitions();
             if (save.happinessModifiers == null)
                 save.happinessModifiers = new List<HappinessModifierData>();
 
@@ -102,12 +102,20 @@ namespace FishingMod
             return save.gameVariables != null && save.gameVariables.disableHappiness;
         }
 
-        private static void EnsureDefinitionsRegistered()
+        internal static void RegisterDefinitions()
+        {
+            if (ModifiersField == null)
+                throw new MissingFieldException(typeof(HappinessHelper).FullName, "Modifiers");
+            if (!TryRegisterDefinitions())
+                throw new InvalidOperationException("The native happiness modifier registry is not initialized.");
+        }
+
+        internal static bool TryRegisterDefinitions()
         {
             if (ModifiersField == null)
                 throw new MissingFieldException(typeof(HappinessHelper).FullName, "Modifiers");
             if (!(ModifiersField.GetValue(null) is Dictionary<string, HappinessModifier> modifiers))
-                throw new InvalidOperationException("The native happiness modifier registry is not initialized.");
+                return false;
 
             RegisterDefinition(
                 modifiers,
@@ -121,6 +129,7 @@ namespace FishingMod
                     fish[i].HappinessModifierType,
                     fish[i].HappinessBonus,
                     CatchBonusHours);
+            return true;
         }
 
         private static void RegisterDefinition(

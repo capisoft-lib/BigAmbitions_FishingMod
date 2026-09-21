@@ -24,13 +24,21 @@ namespace FishingMod
         private readonly LineRenderer _fishingLine;
         private readonly LineRenderer _ripple;
         private readonly List<Material> _materials = new List<Material>();
-        private readonly Quaternion _leftHandStartRotation;
-        private readonly Quaternion _rightHandStartRotation;
-        private readonly Vector3 _initialForward;
-        private readonly Vector3 _waterDirection;
-        private readonly Vector3 _landingPoint;
-        private readonly Transform _chest;
-        private readonly Transform _hips;
+        private Quaternion _leftHandStartRotation;
+        private Quaternion _rightHandStartRotation;
+        private Vector3 _initialForward;
+        private Vector3 _waterDirection;
+        private Vector3 _landingPoint;
+        private readonly Transform _rightUpper, _leftUpper;
+        private readonly Transform _rightLower, _leftLower;
+        private readonly List<Transform> _posedArms = new List<Transform>();
+        private readonly List<Quaternion> _armBefore = new List<Quaternion>();
+        private readonly float _rightReach, _leftReach;
+        private float _flightDuration;
+        private readonly Quaternion _rightGripBasis = Quaternion.identity, _leftGripBasis = Quaternion.identity;
+        private readonly Vector3 _rightPalmOffset, _leftPalmOffset;
+        private readonly List<Transform> _fingers = new List<Transform>();
+        private readonly List<Quaternion> _fingerBefore = new List<Quaternion>();
         private readonly float _scale;
 
         private CastPose _pose;
@@ -38,6 +46,11 @@ namespace FishingMod
         private Vector3 _launchPoint;
         private bool _launchCaptured;
         private bool _disposed;
+        private bool _active;
+        private readonly Animator _preparedAnimator;
+        private readonly Transform _preparedLeftHand, _preparedRightHand;
+        private static readonly float[] LineSag = BuildLineSag();
+        private static readonly Vector3[] RippleCircle = BuildRippleCircle();
         private float _elapsed;
         private float _fightElapsed;
         private float _retrieveProgress;
@@ -45,7 +58,7 @@ namespace FishingMod
         private bool _releaseSoundPending;
         private bool _splashSoundPending;
 
-        internal FishingCastVisual(ThirdPersonCharacter character, Vector3 waterPoint)
+        internal FishingCastVisual(ThirdPersonCharacter character, Vector3 waterPoint, bool startImmediately = true)
         {
             _character = character ?? throw new ArgumentNullException(nameof(character));
             _initialForward = HorizontalDirection(character.transform.forward, Vector3.forward);
@@ -54,31 +67,43 @@ namespace FishingMod
             direction.y = 0f;
             _waterDirection = HorizontalDirection(direction, _initialForward);
 
-            float waterDistance = direction.magnitude;
-            float castDistance = Mathf.Min(28f, Mathf.Max(3f, waterDistance - 0.25f));
-            _landingPoint = character.transform.position + _waterDirection * castDistance;
-            _landingPoint.y = waterPoint.y + 0.06f;
-
-            Vector3 chestPosition = character.upperChest != null
-                ? character.upperChest.position
-                : character.transform.position + Vector3.up * 1.25f;
-            float measuredArm = character.rightHand != null
-                ? Vector3.Distance(chestPosition, character.rightHand.position)
-                : 0.55f;
-            _scale = Mathf.Clamp(measuredArm / 0.55f, 0.78f, 1.35f);
-
+            _landingPoint = FishingCastGeometry.LandingPoint(waterPoint);
+            _flightDuration = FishingMath.FlightSeconds(Vector3.Distance(character.transform.position, waterPoint));
             Animator animator = character.animator;
+            _preparedAnimator = animator;
+            _preparedLeftHand = character.leftHand;
+            _preparedRightHand = character.rightHand;
             if (animator != null && animator.isHuman)
             {
-                _chest = animator.GetBoneTransform(HumanBodyBones.Chest)
-                    ?? animator.GetBoneTransform(HumanBodyBones.UpperChest)
-                    ?? character.upperChest;
-                _hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+                _rightUpper = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+                _leftUpper = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+                Transform rightLower = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
+                Transform leftLower = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
+                _rightLower = rightLower;
+                _leftLower = leftLower;
+                _rightReach = ArmLength(_rightUpper,rightLower,character.rightHand);
+                _leftReach = ArmLength(_leftUpper,leftLower,character.leftHand);
+                _rightGripBasis = GripBasis(animator, character.rightHand, HumanBodyBones.RightMiddleProximal,
+                    HumanBodyBones.RightIndexProximal, HumanBodyBones.RightLittleProximal);
+                _leftGripBasis = GripBasis(animator, character.leftHand, HumanBodyBones.LeftMiddleProximal,
+                    HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftLittleProximal);
+                _rightPalmOffset = PalmOffset(animator, character.rightHand, HumanBodyBones.RightMiddleProximal);
+                _leftPalmOffset = PalmOffset(animator, character.leftHand, HumanBodyBones.LeftMiddleProximal);
+                foreach (HumanBodyBones bone in new[]{HumanBodyBones.RightIndexProximal,HumanBodyBones.RightIndexIntermediate,
+                    HumanBodyBones.RightIndexDistal,HumanBodyBones.RightMiddleProximal,HumanBodyBones.RightMiddleIntermediate,
+                    HumanBodyBones.RightMiddleDistal,HumanBodyBones.RightRingProximal,HumanBodyBones.RightRingIntermediate,
+                    HumanBodyBones.RightRingDistal,HumanBodyBones.RightLittleProximal,HumanBodyBones.RightLittleIntermediate,
+                    HumanBodyBones.RightLittleDistal,HumanBodyBones.LeftIndexProximal,HumanBodyBones.LeftIndexIntermediate,
+                    HumanBodyBones.LeftIndexDistal,HumanBodyBones.LeftMiddleProximal,HumanBodyBones.LeftMiddleIntermediate,
+                    HumanBodyBones.LeftMiddleDistal,HumanBodyBones.LeftRingProximal,HumanBodyBones.LeftRingIntermediate,
+                    HumanBodyBones.LeftRingDistal,HumanBodyBones.LeftLittleProximal,HumanBodyBones.LeftLittleIntermediate,
+                    HumanBodyBones.LeftLittleDistal})
+                {
+                    Transform finger=animator.GetBoneTransform(bone);
+                    if(finger!=null) _fingers.Add(finger);
+                }
             }
-            else
-            {
-                _chest = character.upperChest;
-            }
+            _scale = Mathf.Clamp((_rightReach > 0f ? _rightReach/.95f : .6f)/.6f,.78f,1.35f);
 
             _leftHandStartRotation = character.leftHand != null ? character.leftHand.rotation : Quaternion.identity;
             _rightHandStartRotation = character.rightHand != null ? character.rightHand.rotation : Quaternion.identity;
@@ -123,13 +148,59 @@ namespace FishingMod
             _ripple.enabled = false;
 
             _bobber.gameObject.SetActive(false);
-            character.SetHandIKTargets(_leftHandTarget, _rightHandTarget, smooth: true);
-            character.SetHeadIKTarget(_headTarget, smooth: true);
+            _root.gameObject.SetActive(false);
+            // Reserve pose snapshots before the first click.
+            _fingerBefore.Capacity = _fingers.Count;
+            _posedArms.Capacity = 6;
+            _armBefore.Capacity = 6;
+            if (startImmediately) BeginCast(waterPoint);
+        }
+
+        internal bool CanReuse(ThirdPersonCharacter character) => !_disposed && _root != null
+            && character != null && character == _character && character.animator == _preparedAnimator
+            && character.leftHand == _preparedLeftHand && character.rightHand == _preparedRightHand;
+
+        internal void BeginCast(Vector3 waterPoint)
+        {
+            if (!CanReuse(_character)) throw new InvalidOperationException("Fishing visual rig changed.");
+            EndCast();
+            _initialForward = HorizontalDirection(_character.transform.forward, Vector3.forward);
+            _waterDirection = HorizontalDirection(waterPoint - _character.transform.position, _initialForward);
+            _landingPoint = FishingCastGeometry.LandingPoint(waterPoint);
+            _flightDuration = FishingMath.FlightSeconds(Vector3.Distance(_character.transform.position, waterPoint));
+            _leftHandStartRotation = _character.leftHand != null ? _character.leftHand.rotation : Quaternion.identity;
+            _rightHandStartRotation = _character.rightHand != null ? _character.rightHand.rotation : Quaternion.identity;
+            _elapsed = _fightElapsed = _retrieveProgress = 0f;
+            _launchCaptured = _fightActive = _releaseSoundPending = _splashSoundPending = false;
+            _launchPoint = default;
+            _bobber.gameObject.SetActive(false);
+            _fishingLine.enabled = _ripple.enabled = false;
+            _active = true;
+            _root.gameObject.SetActive(true);
+            _character.SetHandIKTargets(_leftHandTarget, _rightHandTarget, smooth: true);
+            _character.SetHeadIKTarget(_headTarget, smooth: true);
             Advance(0f);
         }
 
-        internal bool IsAlive => !_disposed && _character != null;
-        internal bool IsComplete => _elapsed >= FishingMath.SequenceDuration;
+        internal void EndCast()
+        {
+            if (!_active) return;
+            RestoreFingerPose();
+            if (_character != null)
+            {
+                _character.SetHandIKTargets(null, null, smooth: true);
+                _character.SetHeadIKTarget(null, smooth: true);
+            }
+            _active = false;
+            if (_root != null) _root.gameObject.SetActive(false);
+        }
+
+        internal bool IsAlive => _active && !_disposed && _character != null && _root != null;
+        internal float ImpactTime => FishingMath.ReleaseTime + _flightDuration;
+        internal float Duration => Mathf.Max(2.5f, ImpactTime + .85f);
+        internal Vector3 LandingPoint => _landingPoint;
+        internal bool IsComplete => _elapsed >= Duration;
+        internal float Elapsed => _elapsed;
 
         internal void AdvanceFight(float deltaTime, float retrieveProgress)
         {
@@ -151,10 +222,10 @@ namespace FishingMod
         {
             if (!IsAlive) return;
             float previousElapsed = _elapsed;
-            _elapsed = Mathf.Min(FishingMath.SequenceDuration, _elapsed + Mathf.Max(0f, deltaTime));
+            _elapsed = Mathf.Min(Duration, _elapsed + Mathf.Max(0f, deltaTime));
             if (previousElapsed < FishingMath.ReleaseTime && _elapsed >= FishingMath.ReleaseTime)
                 _releaseSoundPending = true;
-            float splashTime = FishingMath.ReleaseTime + FishingMath.FlightDuration;
+            float splashTime = ImpactTime;
             if (previousElapsed < splashTime && _elapsed >= splashTime)
                 _splashSoundPending = true;
             _pose = EvaluatePose(_elapsed);
@@ -171,12 +242,35 @@ namespace FishingMod
                 + up * (_pose.HandUp * _scale)
                 + side * (_pose.HandSide * _scale);
             _rodDirection = (forward * _pose.RodForward + up * _pose.RodUp).normalized;
-            Vector3 leftPosition = rightPosition - _rodDirection * (0.34f * _scale) - side * (0.055f * _scale);
+            // Fingers wrap across the handle, not along its length. Mirrored
+            // finger directions keep each wrist on its own side of the rod.
+            FishingCastGeometry.GripFrames(_rodDirection, up, side, out Quaternion rightFrame, out Quaternion leftFrame);
+            Quaternion rightRotation = rightFrame * Quaternion.Inverse(_rightGripBasis);
+            Quaternion leftRotation = leftFrame * Quaternion.Inverse(_leftGripBasis);
+            Vector3 rightPalm = rightRotation * _rightPalmOffset;
+            Vector3 leftPalm = leftRotation * _leftPalmOffset;
+            rightPosition -= rightPalm;
+            Vector3 leftOffset = -_rodDirection * (.20f * _scale) + rightPalm - leftPalm;
+            if(_rightUpper != null && _leftUpper != null)
+                rightPosition=FishingCastGeometry.ConstrainGrip(rightPosition,leftOffset,_rightUpper.position,
+                    _leftUpper.position,_rightReach,_leftReach);
+            Vector3 leftPosition=rightPosition+leftOffset;
 
             Quaternion sweep = Quaternion.FromToRotation(_initialForward, _rodDirection);
-            _rightHandTarget.SetPositionAndRotation(rightPosition, sweep * _rightHandStartRotation);
-            _leftHandTarget.SetPositionAndRotation(leftPosition, sweep * _leftHandStartRotation);
-            _headTarget.position = Vector3.Lerp(_landingPoint, rightPosition + _rodDirection * 2.2f, 0.30f);
+            _rightHandTarget.SetPositionAndRotation(rightPosition, _rightUpper != null
+                ? rightRotation : sweep * _rightHandStartRotation);
+            _leftHandTarget.SetPositionAndRotation(leftPosition, _leftUpper != null
+                ? leftRotation : sweep * _leftHandStartRotation);
+            _headTarget.position = chest + forward * (3f * _scale) - up * (.30f * _scale);
+            // Native ThirdPersonCharacter.Update ran before this late-ordered runtime.
+            // Synchronize the actual rig targets now, before animation evaluation.
+            var appearance=_character.appearanceSetter;
+            if(appearance!=null)
+            {
+                if(appearance.rightHandIKTarget!=null) appearance.rightHandIKTarget.SetPositionAndRotation(_rightHandTarget.position,_rightHandTarget.rotation);
+                if(appearance.leftHandIKTarget!=null) appearance.leftHandIKTarget.SetPositionAndRotation(_leftHandTarget.position,_leftHandTarget.rotation);
+                if(appearance.headIKTarget!=null) appearance.headIKTarget.position=_headTarget.position;
+            }
         }
 
         internal bool ConsumeReleaseSoundEvent()
@@ -196,19 +290,32 @@ namespace FishingMod
         internal void RenderLate()
         {
             if (!IsAlive) return;
-            ApplyBodyMotion();
+            RestoreFingerPose();
+
+            // Native rig elbow hints and rotation weights differ between avatars.
+            // Finish both chains after native animation with explicit outward hints.
+            Vector3 armSide = Vector3.Cross(_character.transform.up, _waterDirection).normalized;
+            SolveArm(_rightUpper, _rightLower, _character.rightHand, _rightHandTarget, armSide);
+            SolveArm(_leftUpper, _leftLower, _character.leftHand, _leftHandTarget, -armSide);
 
             Vector3 grip = _character.rightHand != null
-                ? _character.rightHand.position
+                ? _character.rightHand.TransformPoint(_rightPalmOffset)
                 : _rightHandTarget.position;
             Vector3 up = _character.transform.up;
             Vector3 forward = _waterDirection;
 
-            Vector3 handleStart = grip - _rodDirection * (0.38f * _scale);
-            Vector3 handleEnd = grip + _rodDirection * (0.12f * _scale);
+            Vector3 rodDirection=_rodDirection;
+            if(_character.leftHand!=null && _character.rightHand!=null)
+            {
+                Vector3 between=grip-_character.leftHand.TransformPoint(_leftPalmOffset);
+                if(between.magnitude>.1f && Vector3.Dot(between.normalized,_rodDirection)>.3f) rodDirection=between.normalized;
+            }
+            CurlFingers(grip,rodDirection);
+            Vector3 handleStart = grip - rodDirection * (0.38f * _scale);
+            Vector3 handleEnd = grip + rodDirection * (0.12f * _scale);
             SetCylinder(_handle, handleStart, handleEnd, 0.055f * _scale);
 
-            Vector3 reelCenter = grip - _rodDirection * (0.08f * _scale) - up * (0.085f * _scale);
+            Vector3 reelCenter = grip - rodDirection * (0.08f * _scale) - up * (0.085f * _scale);
             SetCylinder(_reel, reelCenter - _character.transform.right * (0.065f * _scale),
                 reelCenter + _character.transform.right * (0.065f * _scale), 0.085f * _scale);
 
@@ -216,13 +323,13 @@ namespace FishingMod
             float fightFlex = _fightActive ? 0.08f + Mathf.Sin(_fightElapsed * 7f) * 0.035f : 0f;
             Vector3 bendDirection = -forward * ((_pose.Flex * 0.46f + fightFlex) * _scale)
                 - up * ((_pose.Flex * 0.12f + fightFlex * 0.35f) * _scale);
-            Vector3 rodStart = grip + _rodDirection * (0.08f * _scale);
+            Vector3 rodStart = grip + rodDirection * (0.08f * _scale);
             Vector3 rodTip = rodStart;
             for (int i = 0; i < RodPointCount; i++)
             {
                 float progress = i / (float)(RodPointCount - 1);
                 float bend = progress * progress;
-                Vector3 position = rodStart + _rodDirection * (rodLength * progress) + bendDirection * bend;
+                Vector3 position = rodStart + rodDirection * (rodLength * progress) + bendDirection * bend;
                 _rod.SetPosition(i, position);
                 if (i == RodPointCount - 1) rodTip = position;
             }
@@ -236,9 +343,8 @@ namespace FishingMod
                 _fishingLine.enabled = true;
             }
 
-            float flight = FishingMath.Clamp01((_elapsed - FishingMath.ReleaseTime) / FishingMath.FlightDuration);
-            Vector3 bobberPosition = Vector3.Lerp(_launchPoint, _landingPoint, flight);
-            bobberPosition.y += FishingMath.BallisticHeight(flight, 4.9f * _scale);
+            float flight = FishingMath.Clamp01((_elapsed - FishingMath.ReleaseTime) / _flightDuration);
+            Vector3 bobberPosition = FishingCastGeometry.FlightPoint(_launchPoint, _landingPoint, flight, _scale);
             if (flight >= 1f)
             {
                 Vector3 reeledPoint = _character.transform.position + _waterDirection * (1.10f * _scale);
@@ -256,13 +362,8 @@ namespace FishingMod
         public void Dispose()
         {
             if (_disposed) return;
+            EndCast();
             _disposed = true;
-
-            if (_character != null)
-            {
-                _character.SetHandIKTargets(null, null, smooth: true);
-                _character.SetHeadIKTarget(null, smooth: true);
-            }
 
             if (_root != null) UnityEngine.Object.Destroy(_root.gameObject);
             for (int i = 0; i < _materials.Count; i++)
@@ -270,16 +371,73 @@ namespace FishingMod
             _materials.Clear();
         }
 
-        private void ApplyBodyMotion()
+        private static float ArmLength(Transform upper, Transform lower, Transform hand)
+            => upper != null && lower != null && hand != null
+                ? (Vector3.Distance(upper.position,lower.position)+Vector3.Distance(lower.position,hand.position))*.95f : .57f;
+
+        private static Quaternion GripBasis(Animator animator, Transform hand, HumanBodyBones middle,
+            HumanBodyBones index, HumanBodyBones little)
         {
-            Vector3 up = _character.transform.up;
-            Vector3 right = _character.transform.right;
-            if (_hips != null)
-                _hips.rotation = Quaternion.AngleAxis(_pose.TorsoYaw * 0.28f, up) * _hips.rotation;
-            if (_chest != null)
+            Transform m=animator.GetBoneTransform(middle),i=animator.GetBoneTransform(index),l=animator.GetBoneTransform(little);
+            if(hand==null || m==null || i==null || l==null) return Quaternion.identity;
+            Vector3 forward=hand.InverseTransformDirection(m.position-hand.position);
+            Vector3 normal=hand.InverseTransformDirection(Vector3.Cross(i.position-l.position,m.position-hand.position));
+            return forward.sqrMagnitude>.000001f && normal.sqrMagnitude>.00000001f
+                ? Quaternion.LookRotation(forward,normal) : Quaternion.identity;
+        }
+
+        private static Vector3 PalmOffset(Animator animator, Transform hand, HumanBodyBones middle)
+        {
+            Transform knuckle = animator.GetBoneTransform(middle);
+            return hand != null && knuckle != null
+                ? hand.InverseTransformPoint(Vector3.Lerp(hand.position, knuckle.position, .8f))
+                : Vector3.zero;
+        }
+
+        internal void RestoreFingerPose()
+        {
+            for(int i=0;i<_fingerBefore.Count;i++) if(_fingers[i]!=null) _fingers[i].localRotation=_fingerBefore[i];
+            _fingerBefore.Clear();
+            for(int i=0;i<_armBefore.Count;i++) if(_posedArms[i]!=null) _posedArms[i].localRotation=_armBefore[i];
+            _armBefore.Clear();
+            _posedArms.Clear();
+        }
+
+        private void SolveArm(Transform upper, Transform lower, Transform hand, Transform target, Vector3 outward)
+        {
+            if (upper == null || lower == null || hand == null) return;
+            foreach (Transform bone in new[] { upper, lower, hand })
             {
-                _chest.rotation = Quaternion.AngleAxis(_pose.TorsoYaw, up) * _chest.rotation;
-                _chest.rotation = Quaternion.AngleAxis(_pose.TorsoPitch, right) * _chest.rotation;
+                _posedArms.Add(bone);
+                _armBefore.Add(bone.localRotation);
+            }
+            Vector3 shoulder = upper.position;
+            float upperLength = Vector3.Distance(shoulder, lower.position);
+            float lowerLength = Vector3.Distance(lower.position, hand.position);
+            Vector3 elbow = FishingCastGeometry.ElbowPosition(shoulder, target.position,
+                outward - _character.transform.up * .65f, upperLength, lowerLength);
+            upper.rotation = Quaternion.FromToRotation(lower.position - shoulder, elbow - shoulder) * upper.rotation;
+            lower.rotation = Quaternion.FromToRotation(hand.position - lower.position,
+                target.position - lower.position) * lower.rotation;
+            hand.rotation = target.rotation;
+        }
+
+        private void CurlFingers(Vector3 grip, Vector3 rodDirection)
+        {
+            foreach(var finger in _fingers) _fingerBefore.Add(finger!=null ? finger.localRotation : Quaternion.identity);
+            float amount=FishingMath.Segment(_elapsed,0f,.3f);
+            foreach(var finger in _fingers)
+            {
+                if(finger==null || finger.childCount==0) continue;
+                Vector3 along=finger.GetChild(0).position-finger.position;
+                Vector3 closest=grip+rodDirection*Vector3.Dot(finger.position-grip,rodDirection);
+                Vector3 inward=closest-finger.position;
+                Vector3 axis=Vector3.Cross(along,inward);
+                if(axis.sqrMagnitude>.00000001f)
+                {
+                    float angle = Mathf.Min(65f, Vector3.Angle(along, inward));
+                    finger.rotation=Quaternion.AngleAxis(angle*amount,axis.normalized)*finger.rotation;
+                }
             }
         }
 
@@ -291,7 +449,7 @@ namespace FishingMod
             {
                 float progress = i / (float)(FishingLinePointCount - 1);
                 Vector3 point = Vector3.Lerp(rodTip, bobberPosition, progress);
-                point.y -= Mathf.Sin(progress * Mathf.PI) * sag;
+                point.y -= LineSag[i] * sag;
                 _fishingLine.SetPosition(i, point);
             }
         }
@@ -304,7 +462,7 @@ namespace FishingMod
                 return;
             }
 
-            float splashTime = _elapsed - FishingMath.ReleaseTime - FishingMath.FlightDuration;
+            float splashTime = _elapsed - ImpactTime;
             if (splashTime > 0.85f)
             {
                 _ripple.enabled = false;
@@ -315,9 +473,26 @@ namespace FishingMod
             float radius = Mathf.Lerp(0.08f, 0.75f * _scale, FishingMath.Smooth01(splashTime / 0.85f));
             for (int i = 0; i < RipplePointCount; i++)
             {
-                float angle = i * Mathf.PI * 2f / RipplePointCount;
-                _ripple.SetPosition(i, _landingPoint + new Vector3(Mathf.Cos(angle) * radius, 0.015f, Mathf.Sin(angle) * radius));
+                _ripple.SetPosition(i, _landingPoint + RippleCircle[i] * radius + Vector3.up * .015f);
             }
+        }
+
+        private static float[] BuildLineSag()
+        {
+            var values = new float[FishingLinePointCount];
+            for (int i = 0; i < values.Length; i++) values[i] = Mathf.Sin(i * Mathf.PI / (values.Length - 1));
+            return values;
+        }
+
+        private static Vector3[] BuildRippleCircle()
+        {
+            var values = new Vector3[RipplePointCount];
+            for (int i = 0; i < values.Length; i++)
+            {
+                float angle = i * Mathf.PI * 2f / values.Length;
+                values[i] = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            }
+            return values;
         }
 
         private Transform NewTarget(string name)
@@ -424,13 +599,13 @@ namespace FishingMod
             return value.normalized;
         }
 
-        private static CastPose EvaluatePose(float elapsed)
+        internal static CastPose EvaluatePose(float elapsed)
         {
             CastPose ready = new CastPose(0.24f, -0.18f, 0.22f, 0.18f, 0.98f, 0f, 0f, 0.02f);
-            CastPose windUp = new CastPose(-0.34f, 0.24f, 0.26f, -0.72f, 0.69f, -24f, -6f, 0.20f);
-            CastPose release = new CastPose(0.64f, 0.04f, 0.16f, 0.91f, 0.42f, 17f, 8f, 0.58f);
-            CastPose follow = new CastPose(0.70f, -0.16f, 0.10f, 0.98f, -0.20f, 12f, 10f, 0.12f);
-            CastPose settle = new CastPose(0.44f, -0.12f, 0.15f, 0.94f, 0.34f, 3f, 2f, 0.03f);
+            CastPose windUp = new CastPose(0.02f, 0.13f, 0.24f, -0.38f, 0.92f, 0f, 0f, 0.14f);
+            CastPose release = new CastPose(0.44f, -0.03f, 0.17f, 0.82f, 0.57f, 0f, 0f, 0.30f);
+            CastPose follow = new CastPose(0.46f, -0.13f, 0.16f, 0.99f, 0.12f, 0f, 0f, 0.10f);
+            CastPose settle = new CastPose(0.43f, -0.14f, 0.02f, 0.94f, 0.34f, 3f, 2f, 0.03f);
 
             if (elapsed < 0.16f) return ready;
             if (elapsed < 0.67f) return CastPose.Lerp(ready, windUp, FishingMath.Segment(elapsed, 0.16f, 0.67f));
@@ -440,7 +615,7 @@ namespace FishingMod
             return CastPose.Lerp(follow, settle, FishingMath.Segment(elapsed, 1.45f, 2.25f));
         }
 
-        private readonly struct CastPose
+        internal readonly struct CastPose
         {
             internal CastPose(float handForward, float handUp, float handSide, float rodForward, float rodUp,
                 float torsoYaw, float torsoPitch, float flex)

@@ -5,7 +5,7 @@
   "includePlatforms": ["Editor"],
   "allowUnsafeCode": false,
   "overrideReferences": true,
-  "precompiledReferences": ["BigAmbitions.dll"],
+  "precompiledReferences": ["BigAmbitions.dll", "BigAmbitions.ModAPI.dll", "HGExtensions.dll", "DayNightCycle.dll", "0Harmony.dll"],
   "autoReferenced": false,
   "defineConstraints": ["BA_GAME_DLLS_IMPORTED"],
   "versionDefines": [],

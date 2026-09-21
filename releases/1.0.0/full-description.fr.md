@@ -1,47 +1,55 @@
-[b]Fishing Mod 1.0.0[/b]
+[h1]Fishing Mod — Une pause au bord de l'eau[/h1]
 
-Transformez les eaux de la ville de Big Ambitions en une véritable activité de pêche. Cliquez sur une étendue d'eau extérieure visible, laissez votre personnage rejoindre la rive accessible la plus proche, lancez la ligne puis remontez votre prise grâce à un QTE circulaire soigné.
+Éloignez-vous de vos commerces, trouvez un coin au bord de l'eau et lancez votre ligne. D'une rive tranquille à la marina des Hamptons, profitez d'un moment libre pour attraper un poisson, gagner du bonheur et arrondir vos revenus.
 
-[b]Fonctionnalités[/b]
+[b]Six poissons • Canne et ligne animées • Mini-jeu de pêche facultatif • Vente automatique[/b]
 
+[h2]Votre prochaine prise[/h2]
 [list]
-[*][b]Pêche en un clic[/b] — cliquez sur l'eau extérieure et le personnage cherche un trajet NavMesh complet vers la rive utilisable la plus proche.
-[*][b]Lancer procédural[/b] — le mod crée et anime à l'exécution sa propre canne, son moulinet, son fil, son bouchon, son éclaboussure et un ample lancer à deux mains.
-[*][b]Touches imprévisibles[/b] — chaque lancer a 80 % de chances d'attirer un poisson. Il mord après 2 à 20 secondes ; une ligne vide est automatiquement remontée après 20 secondes.
-[*][b]QTE circulaire centré[/b] — suivez les quatre flèches ou la commande Space au centre pendant que l'anneau vert indique la ligne récupérée. Les flèches, WASD, ZQSD et Space sont pris en charge.
-[*][b]Tension équilibrée[/b] — le combat commence à 30 %. Une bonne réponse remonte 3,5 m ; une erreur ou un délai dépassé ne relâche que 1,75 m. Le poisson ne s'échappe que si la progression retombe à 0 %.
-[*][b]Six poissons pondérés[/b] — pêchez Gardon, Perche, Truite, Carpe, Brochet et Esturgeon. Les meilleurs poissons sont plus rares et demandent des séquences plus longues avec un temps de réponse légèrement réduit, tout en restant réalisables.
-[*][b]Récompenses utiles[/b] — un lancer terminé rafraîchit un bonus de +10 de bonheur pendant 48 heures en jeu. Une prise ajoute pendant 72 heures un bonus lié au poisson ; seul le meilleur bonus actif compte, afin d'empêcher une accumulation infinie.
-[*][b]Séquence sonore complète[/b] — des effets dédiés accompagnent le lancer, le déroulement du moulinet, le plouf du bouchon, l'enroulement, les retours légers du QTE, la sortie du poisson et la ligne qui casse.
+[*][b]Lancez depuis votre position.[/b] Cliquez sur l'eau extérieure visible, ou visez-la et appuyez sur F. Restez à moins de 10 mètres horizontaux d'une zone d'eau cartographiée : votre personnage se tourne vers l'eau sans changer de place.
+[*][b]Surveillez le bouchon.[/b] Chaque lancer a 80 % de chances d'attirer un poisson. Il mord entre 2 et 20 secondes après l'arrivée du bouchon dans l'eau. Une ligne vide est remontée automatiquement après 20 secondes.
+[*][b]Remontez votre prise.[/b] Suivez le mini-jeu circulaire au clavier, ou désactivez-le pour une récupération automatique. La canne, le moulinet, le fil, le bouchon et les effets sonores accompagnent la pêche.
+[*][b]Profitez des récompenses.[/b] Les poissons capturés sont vendus automatiquement, avec une transaction dans votre historique financier. La pêche apporte également des bonus de bonheur.
 [/list]
 
-[b]Comment pêcher[/b]
-
+[h2]Six poissons à découvrir[/h2]
 [list]
-[*]Soyez à l'extérieur, à pied, les mains vides et sans menu ouvert.
-[*]Faites un clic gauche sur de l'eau visible.
-[*]Attendez que le personnage rejoigne la rive et lance la ligne.
-[*]Si un poisson mord, appuyez sur la direction allumée ou sur Space avant la fin du délai.
-[*]Appuyez sur Échap pendant le QTE pour relâcher le poisson.
+[*]Gardon — 5 $
+[*]Perche — 8 $
+[*]Truite — 15 $
+[*]Carpe — 25 $
+[*]Brochet — 40 $
+[*]Esturgeon — 75 $
 [/list]
+Les poissons rares demandent des combats plus longs. Un lancer terminé apporte +10 de bonheur pendant 48 heures en jeu. Une prise ajoute un bonus lié au poisson pendant 72 heures ; seul le meilleur bonus de prise actif compte.
 
-Les clics ordinaires sur le sol, les bâtiments, les véhicules, l'interface et les objets interactifs conservent leur comportement d'origine.
-
-[b]Prérequis[/b]
-
+[h2]Comment pêcher[/h2]
 [list]
-[*]Big Ambitions 1.0 avec la prise en charge des mods.
-[*]Aucun autre mod ni aucune bibliothèque n'est requis.
+[*][b]1. Trouvez votre coin.[/b] Soyez dehors, à pied, les mains vides et sans menu ouvert. Approchez-vous d'une zone d'eau cartographiée et visez une surface dégagée.
+[*][b]2. Lancez.[/b] Faites un clic gauche sur l'eau ou appuyez sur F en la visant.
+[*][b]3. Suivez les indications.[/b] Quand un poisson mord, appuyez sur la flèche indiquée, la direction correspondante en WASD/ZQSD ou Espace. Remplissez l'anneau vert pour le capturer.
+[*][b]4. Gardez le contrôle.[/b] Le clic droit permet de régler la caméra sans interrompre la pêche. Échap relâche le poisson. Avant une touche, marcher ou faire un clic gauche annule aussi le lancer.
 [/list]
+Le combat commence à 30 % de progression. Les bonnes réponses remontent la ligne ; les erreurs et les délais dépassés en relâchent une partie. Une casse à 0 % coûte au maximum 5 $, dans la limite de votre solde positif. Les lancers vides et les annulations sont gratuits. La dernière touche du mini-jeu reste bloquée pour les commandes du personnage jusqu'à son relâchement.
 
-[b]Installation[/b]
+[h2]Pêchez à votre rythme[/h2]
+Dans les options du mod :
+[list]
+[*][b]Activer le QTE[/b] — actif par défaut. Désactivez-le pour remonter automatiquement les poissons qui mordent, avec les récompenses habituelles.
+[*][b]Difficulté[/b] — de 0,2 à 5,0, avec 1,0 par défaut. Une valeur basse laisse plus de temps pour répondre ; une valeur élevée en laisse moins.
+[/list]
+Les réglages sont mémorisés et s'appliquent à la prochaine touche. Les chances d'attirer un poisson et le temps d'attente restent identiques.
 
-Abonnez-vous sur le Steam Workshop, activez [b]Fishing Mod[/b] dans le menu Mods du jeu, puis redémarrez complètement le jeu après l'installation ou une mise à jour. N'utilisez qu'une seule installation : Workshop ou ModsLocal, jamais les deux.
+[h2]Nouveautés de la version 1.0.0[/h2]
+Les pontons en bois et les plateformes du Yacht Club sont exclus des zones de pêche, tout en conservant l'eau libre entre les passerelles. Les objets visuels et les matériaux sont préparés à l'avance puis réutilisés entre les lancers. Les zones d'eau sont précalculées, sans recherche périodique dans toute la ville.
 
-[b]Audio et code source[/b]
+[h2]Installation et compatibilité[/h2]
+Abonnez-vous, activez [b]Fishing Mod[/b] dans le menu Mods du jeu, puis redémarrez complètement le jeu après l'installation ou une mise à jour. Utilisez soit le Workshop, soit ModsLocal, jamais les deux pour ce mod.
 
-Les huit effets sonores inclus sont redistribuables sous licence CC0 1.0. Le paquet source conserve les auteurs, liens, déclarations de licence et traitements exacts dans [b]THIRD_PARTY_NOTICES.md[/b].
+Compilé pour Big Ambitions 1.0, build 3680. Aucune dépendance Workshop séparée n'est nécessaire ; Harmony est inclus. La pêche couvre les eaux extérieures cartographiées de la ville, d'Industry City et des Hamptons. Les piscines et les plans d'eau non cartographiés ne sont pas pris en charge. Les clics ordinaires sur le sol et les interactions du jeu conservent leur fonctionnement habituel.
 
-[b]Code source :[/b] [url=https://github.com/capisoft-lib/BigAmbitions_FishingMod]GitHub — capisoft-lib/BigAmbitions_FishingMod[/url]
+[h2]Crédits et code source[/h2]
+Les huit effets sonores inclus sont sous licence CC0 ; les crédits complets et les licences figurent dans THIRD_PARTY_NOTICES.md.
+[url=https://github.com/capisoft-lib/BigAmbitions_FishingMod]Code source sur GitHub[/url]
 
 Mod communautaire par capisoft-lib, sans affiliation avec Hovgaard Games.

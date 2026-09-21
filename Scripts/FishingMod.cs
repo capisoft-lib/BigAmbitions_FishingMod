@@ -2,8 +2,10 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using BAModAPI;
+using HarmonyLib;
 using UnityEngine;
 
+[assembly: RegisterModClass(typeof(FishingMod.FishingModInitializationEntry))]
 [assembly: RegisterModClass(typeof(FishingMod.FishingModEntry))]
 [assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
 [assembly: System.Reflection.AssemblyFileVersion("1.0.0.0")]
@@ -11,6 +13,52 @@ using UnityEngine;
 
 namespace FishingMod
 {
+    [ModEntryOnInitializationLoad]
+    public sealed class FishingModInitializationEntry : IModBigAmbitions
+    {
+        private const string HarmonyId = "capisoft.fishingmod.happiness-bootstrap";
+        private Harmony _harmony;
+
+        public string[] RelativeAssetBundlePaths => Array.Empty<string>();
+
+        public Task OnLoadAsync(ModContext context)
+        {
+            _harmony = new Harmony(HarmonyId);
+            try
+            {
+                FishingOptions.Register(context.ModId);
+                FishingHappinessBootstrapPatch.Install(
+                    _harmony,
+                    message => context.Logger.Info(message));
+                bool registeredImmediately = FishingHappinessService.TryRegisterDefinitions();
+                context.Logger.Info(registeredImmediately
+                    ? "FishingMod 1.0.0 happiness bootstrap installed; the existing native registry was updated."
+                    : "FishingMod 1.0.0 happiness bootstrap armed for the native registry load.");
+            }
+            catch
+            {
+                FishingOptions.Unregister();
+                _harmony.UnpatchAll(_harmony.Id);
+                _harmony = null;
+                throw;
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task OnUnloadAsync()
+        {
+            FishingOptions.Unregister();
+            // Definitions can still be referenced by the active save. Keep them alive
+            // until the game's subsystem reset clears the native registry.
+            if (_harmony != null)
+            {
+                FishingHappinessBootstrapPatch.Uninstall(_harmony);
+                _harmony = null;
+            }
+            return Task.CompletedTask;
+        }
+    }
+
     [ModEntryOnCityLoad]
     public sealed class FishingModEntry : IModBigAmbitions
     {

@@ -8,6 +8,8 @@ namespace FishingMod
         internal const float FlightDuration = 0.90f;
         internal const float SequenceDuration = 3.35f;
 
+        internal static float FlightSeconds(float distance) => Math.Max(0.55f, Math.Min(3f, distance / 22f));
+
         internal static float Clamp01(float value)
         {
             if (value <= 0f) return 0f;
@@ -49,13 +51,23 @@ namespace FishingMod
         internal static bool LooksLikeWater(string value)
         {
             if (string.IsNullOrWhiteSpace(value)) return false;
-            string text = value.Trim().ToLowerInvariant();
-            if (text.Contains("waterpedestrian") || text.Contains("water_bottle")
-                || text.Contains("waterbottle") || text.Contains("coolant")
-                || text.Contains("shower") || text.Contains("drinkingwater"))
+            string text = value.Trim();
+            // Imported assets commonly use WaterSurface, Lake01 or OceanMesh, not separate words.
+            var words = new System.Text.StringBuilder(text.Length + 8);
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (i > 0 && char.IsUpper(text[i]) && char.IsLower(text[i - 1])) words.Append(' ');
+                words.Append(char.ToLowerInvariant(text[i]));
+            }
+            text = words.ToString();
+            string compact = text.Replace(" ", "").Replace("_", "");
+            if (compact.Contains("waterpedestrian") || compact.Contains("waterbottle")
+                || compact.Contains("coolant") || compact.Contains("shower") || compact.Contains("drinkingwater")
+                || compact.Contains("watertower") || compact.Contains("waterpipe") || compact.Contains("waterfall")
+                || compact.Contains("lakehouse") || compact.Contains("waterfront"))
                 return false;
 
-            string[] tokens = { "water", "ocean", "river", "canal", "harbor", "harbour", "sea" };
+            string[] tokens = { "water", "ocean", "river", "canal", "sea", "lake", "pond", "lagoon" };
             for (int i = 0; i < tokens.Length; i++)
             {
                 int index = 0;
@@ -64,7 +76,7 @@ namespace FishingMod
                     int before = index - 1;
                     int after = index + tokens[i].Length;
                     bool leftBoundary = before < 0 || !char.IsLetterOrDigit(text[before]);
-                    bool rightBoundary = after >= text.Length || !char.IsLetterOrDigit(text[after]);
+                    bool rightBoundary = after >= text.Length || !char.IsLetter(text[after]);
                     if (leftBoundary && rightBoundary) return true;
                     index++;
                 }

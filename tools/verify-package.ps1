@@ -7,37 +7,83 @@ $manifest = Join-Path $output 'ModManifest.asset'
 foreach ($required in @($dll, $manifest, (Join-Path $output 'README.md'), (Join-Path $output 'CHANGELOG.md'), (Join-Path $output 'THIRD_PARTY_NOTICES.md'))) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing package file: $required" }
 }
-$unexpectedDlls = @(Get-ChildItem -LiteralPath $output -Recurse -Filter '*.dll' -File | Where-Object Name -ne 'FishingMod.dll')
-if ($unexpectedDlls.Count -ne 0) { throw "Unexpected bundled DLL(s): $($unexpectedDlls.Name -join ', ')" }
+$dllNames = @(Get-ChildItem -LiteralPath $output -Recurse -Filter '*.dll' -File |
+    ForEach-Object { $_.FullName.Substring($output.Length + 1).Replace('\', '/') } |
+    Sort-Object)
+$expectedDllNames = @('Dependencies/0Harmony.dll', 'FishingMod.dll')
+if (($dllNames -join '|') -ne ($expectedDllNames -join '|')) {
+    throw "Unexpected bundled DLL(s): $($dllNames -join ', ')"
+}
+$harmonyDll = Join-Path $output 'Dependencies\0Harmony.dll'
+if ([Reflection.AssemblyName]::GetAssemblyName($harmonyDll).Name -ne '0Harmony') {
+    throw 'Harmony dependency identity is invalid.'
+}
+$cecilPath = 'C:\Program Files\Unity\Hub\Editor\2022.3.62f2\Editor\Data\il2cpp\build\deploy\Mono.Cecil.dll'
+Add-Type -Path $cecilPath
+$compiledAssembly = [Mono.Cecil.AssemblyDefinition]::ReadAssembly($dll)
+try {
+    $references = @($compiledAssembly.MainModule.AssemblyReferences | Select-Object -ExpandProperty Name)
+    if ('0Harmony' -notin $references) {
+        throw 'FishingMod must reference the packaged Harmony assembly.'
+    }
+    if ($compiledAssembly.Name.Version.ToString() -ne '1.0.0.0') {
+        throw "Unexpected FishingMod assembly version $($compiledAssembly.Name.Version)."
+    }
+}
+finally {
+    $compiledAssembly.Dispose()
+}
 $bytes = [IO.File]::ReadAllBytes($dll)
 $ascii = [Text.Encoding]::ASCII.GetString($bytes)
 $unicode = [Text.Encoding]::Unicode.GetString($bytes)
+$unicodeOffset = [Text.Encoding]::Unicode.GetString($bytes, 1, $bytes.Length - 1)
 foreach ($marker in @(
     'FishingMod_CastVisual',
     'FishingMod_Runtime',
     'FishingQteSession',
     'FishingBiteRules',
+    'FishingBiteTimer',
+    'FishingInputRules',
+    'TryCancelPendingActivity',
+    'AddHdrpSurface',
+    'TryGetStaticWaterPoint',
+    'IsHamptonsMarinaMousePlane', 'IsHamptonsMarinaGroundVolume', 'IsHamptonsEastCoastOccluder', 'IsVerifiedSupport', 'StartCastAtCurrentPosition', 'IsPlayerNearWater', 'DistanceToWater', 'ConstrainGrip',
+    'GameWaterAtlas',
+    'LastMatchedZoneId',
+    'ContainsFootprint',
+    'FishingEconomyService',
+    'FishingEconomyRules',
+    'TryClaimSettlement',
+    'ChangeMoneySafe',
     'FishingHappinessService',
+    'FishingModInitializationEntry',
+    'ModEntryOnInitializationLoadAttribute',
+    'RegisterDefinitions',
     'ApplyFishingActivity',
     'ApplyCatch',
     'AdvanceFight',
     'DrawControlWheel',
     'SetHandIKTargets',
-    'SetGoal',
+    'ResetWalkingAnimation',
     'RaycastNonAlloc',
     'SurfaceCellKey',
     'IndexedTileCount',
     'CacheBuildCount',
+    'AdvanceIndexing',
+    'CancelIndexing',
     'FishingAudio',
     'FishingWaveDecoder',
     'ConsumeReleaseSoundEvent',
     'ConsumeSplashSoundEvent'
 )) {
-    if (-not $ascii.Contains($marker) -and -not $unicode.Contains($marker)) { throw "Compiled behavior marker missing: $marker" }
+    if (-not $ascii.Contains($marker) -and -not $unicode.Contains($marker) -and -not $unicodeOffset.Contains($marker)) {
+        throw "Compiled behavior marker missing: $marker"
+    }
 }
 $fileNames = @(Get-ChildItem -LiteralPath $output -Recurse -File | ForEach-Object { $_.FullName.Substring($output.Length + 1).Replace('\', '/') })
 $expectedNames = @(
     'CHANGELOG.md',
+    'Dependencies/0Harmony.dll',
     'FishingMod.dll',
     'Locales/en.json',
     'Locales/fr.json',
@@ -82,7 +128,7 @@ if (($soundHashes | Sort-Object -Unique).Count -ne $soundNames.Count) {
 foreach ($locale in @('en.json', 'fr.json')) {
     $localePath = Join-Path $output "Locales\$locale"
     $entries = Get-Content -LiteralPath $localePath -Raw | ConvertFrom-Json
-    foreach ($key in @('fishingmod_happiness_activity', 'fishingmod_qte_hooked', 'fishingmod_waiting', 'fishingmod_result_no_fish', 'fishingmod_result_escaped', 'fishingmod_result_caught')) {
+    foreach ($key in @('fishingmod_happiness_activity', 'fishingmod_qte_hooked', 'fishingmod_waiting', 'fishingmod_wait_cancel_hint', 'fishingmod_wait_cancelled', 'fishingmod_result_no_fish', 'fishingmod_result_escaped', 'fishingmod_result_caught', 'fishingmod_result_sold', 'fishingmod_result_line_cost', 'fishingmod_result_line_free', 'fishingmod_result_money_unconfirmed', 'fishingmod_transaction_sale', 'fishingmod_transaction_line_break')) {
         if (-not $entries.PSObject.Properties[$key] -or [string]::IsNullOrWhiteSpace([string]$entries.$key)) {
             throw "Missing locale key '$key' in $localePath"
         }
@@ -103,10 +149,16 @@ foreach ($legalReference in @(
         throw "README legal audio reference missing: $legalReference"
     }
 }
+$noticesText = Get-Content -LiteralPath (Join-Path $output 'THIRD_PARTY_NOTICES.md') -Raw
+foreach ($harmonyNotice in @('github.com/pardeike/Harmony', 'MIT License', 'Copyright (c) 2016 Andreas Pardeike')) {
+    if (-not $noticesText.Contains($harmonyNotice)) {
+        throw "Harmony legal notice missing: $harmonyNotice"
+    }
+}
 [pscustomobject]@{
     Files = $fileNames.Count
     Names = $fileNames
     DllBytes = (Get-Item -LiteralPath $dll).Length
     DllSHA256 = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
-    UnexpectedDlls = $unexpectedDlls.Count
+    UnexpectedDlls = 0
 } | ConvertTo-Json -Depth 4

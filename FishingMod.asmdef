@@ -20,6 +20,7 @@
     "BigAmbitions.Legacy.dll",
     "BigAmbitions.ModAPI.dll",
     "BigAmbitions.ModsInternal.dll",
+    "0Harmony.dll",
     "BigAmbitions.Neighborhoods.dll",
     "BigAmbitions.PlacementSystem.dll",
     "BigAmbitions.Seasons.dll",
